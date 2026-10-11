@@ -1,80 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-
-export const revalidate = 60;
-
-type Article = {
-  slug: string;
-  title: string;
-  excerpt: string | null;
-  content: string | null;
-  category: string;
-  image_url: string | null;
-  author_name: string | null;
-  published_at: string | null;
-};
-
-async function getArticle(slug: string): Promise<Article | null> {
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("articles")
-    .select("slug,title,excerpt,content,category,image_url,author_name,published_at")
-    .eq("slug", slug)
-    .eq("status", "published")
-    .eq("language", "en")
-    .maybeSingle();
-
-  if (error) {
-    console.error("Unable to load article:", error.message);
-    return null;
-  }
-  return data as Article | null;
-}
-
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const article = await getArticle(params.slug);
-  if (!article) return { title: "Story not found" };
-  return {
-    title: article.title,
-    description: article.excerpt ?? article.title,
-    openGraph: {
-      type: "article",
-      title: article.title,
-      description: article.excerpt ?? article.title,
-      images: article.image_url ? [article.image_url] : [],
-      publishedTime: article.published_at ?? undefined,
-    },
-  };
-}
-
-export default async function ArticlePage({ params }: { params: { slug: string } }) {
-  const article = await getArticle(params.slug);
-  if (!article) notFound();
-
-  const date = article.published_at
-    ? new Intl.DateTimeFormat("en", { dateStyle: "long" }).format(new Date(article.published_at))
-    : "";
-
-  return (
-    <main className="min-h-screen">
-      <header className="mx-auto max-w-4xl px-5 py-7">
-        <Link href="/" className="text-2xl font-black tracking-tighter">The-World-Desk</Link>
-        <p className="mt-1 text-xs uppercase tracking-[.25em] text-neutral-500">Independent journalism · Global perspectives</p>
-      </header>
-      <article className="mx-auto max-w-4xl px-5 pb-20">
-        <Link href="/" className="text-sm font-bold text-accent">← Back to front page</Link>
-        <p className="mt-8 text-xs font-black uppercase tracking-[.2em] text-accent">{article.category}</p>
-        <h1 className="mt-3 text-4xl font-black leading-tight sm:text-6xl">{article.title}</h1>
-        {article.excerpt && <p className="mt-5 text-xl leading-8 text-neutral-600">{article.excerpt}</p>}
-        <p className="mt-5 text-sm text-neutral-500">{article.author_name ?? "The-World-Desk"}{date ? " · " + date : ""}</p>
-        {article.image_url && <img src={article.image_url} alt="" className="mt-8 max-h-[560px] w-full object-cover" />}
-        <div className="prose prose-lg mt-10 max-w-none whitespace-pre-wrap leading-8">
-          {article.content || article.excerpt || ""}
-        </div>
-      </article>
-      <footer className="bg-ink px-5 py-8 text-center text-sm text-white/70">© 2026 The-World-Desk</footer>
-    </main>
-  );
-}
+import { getPublishedArticles } from "@/lib/news";
+export const revalidate=60;
+type Props={params:Promise<{slug:string}>};
+export async function generateMetadata({params}:Props):Promise<Metadata>{const {slug}=await params;const a=(await getPublishedArticles()).find(x=>x.slug===slug);return a?{title:a.title,description:a.excerpt,openGraph:{type:"article",title:a.title,description:a.excerpt,images:[a.image]}}:{title:"Story not found"}}
+export default async function ArticlePage({params}:Props){const {slug}=await params;const articles=await getPublishedArticles();const article=articles.find(a=>a.slug===slug);if(!article)notFound();const related=articles.filter(a=>a.slug!==slug).slice(0,3);return <main><header className="wrap masthead"><div className="masthead-row"><Link href="/" className="brand"><span className="brand-mark">W</span><span>THE WORLD<span className="brand-second">DESK</span><small>NEWS · CONTEXT · PERSPECTIVE</small></span></Link><Link href="/latest">Latest news →</Link></div><nav className="nav"><Link href="/">Home</Link><Link href="/section/world">World</Link><Link href="/section/bangladesh">Bangladesh</Link><Link href="/section/politics">Politics</Link><Link href="/section/business">Business</Link><Link href="/section/technology">Technology</Link><Link href="/section/sports">Sports</Link></nav></header><article className="article-body"><Link href="/" className="category-label">← Back to front page</Link><p className="category-label">{article.category}</p><h1>{article.title}</h1>{article.excerpt&&<p className="standfirst">{article.excerpt}</p>}<div className="article-meta">By <strong>{article.author}</strong> · {article.date} · The World Desk</div><img className="hero" src={article.image} alt=""/><p className="text-xs text-neutral-500">Illustrative image. Check article context and sourcing before treating demo material as verified reporting.</p><div className="prose">{article.content.split(/\n\n+/).map((p,i)=><p key={i}>{p}</p>)}</div><div className="border-t border-neutral-200 pt-6 mt-10"><strong>Explore more stories</strong><div className="article-list mt-5">{related.map(a=><div key={a.id}><Link href={"/article/"+a.slug}><img src={a.image} alt=""/><span className="category-label">{a.category}</span><h2>{a.title}</h2></Link></div>)}</div></div></article><footer className="footer"><div className="wrap"><div className="footer-brand">THE WORLD DESK</div><div className="footer-links"><Link href="/">Home</Link><Link href="/about">About</Link><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div><small>© {new Date().getFullYear()} The World Desk</small></div></footer></main>}
