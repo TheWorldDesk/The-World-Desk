@@ -1,1 +1,57 @@
-export const articles = [{id:"world-climate",category:"WORLD",title:"How cities are preparing for a changing climate",excerpt:"Communities are rethinking transport, housing and public spaces as extreme weather becomes a more urgent challenge.",image:"https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=1400&q=85",date:"October 12, 2026"},{id:"technology-ai",category:"TECHNOLOGY",title:"The next chapter of AI is about useful tools",excerpt:"Researchers and product teams are focusing on reliability, transparency and everyday usefulness.",image:"https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=900&q=80",date:"October 11, 2026"},{id:"business-markets",category:"BUSINESS",title:"Small businesses look for resilience as markets adjust",excerpt:"Independent businesses are adapting to a fast-moving economic landscape.",image:"https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=900&q=80",date:"October 11, 2026"},{id:"culture-books",category:"CULTURE",title:"Why local bookstores remain important community spaces",excerpt:"Independent bookshops offer discovery, conversation and belonging.",image:"https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=900&q=80",date:"October 10, 2026"}];
+import { supabase } from "@/lib/supabase";
+
+export type Article = {
+  id: string;
+  slug: string;
+  category: string;
+  title: string;
+  excerpt: string;
+  content: string;
+  image: string;
+  date: string;
+  author: string;
+};
+
+type ArticleRow = {
+  id: string;
+  slug: string;
+  category: string;
+  title: string;
+  excerpt: string | null;
+  content: string | null;
+  image_url: string | null;
+  author_name: string | null;
+  published_at: string | null;
+  created_at: string;
+};
+
+export async function getPublishedArticles(): Promise<Article[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("articles")
+    .select("id,slug,category,title,excerpt,content,image_url,author_name,published_at,created_at")
+    .eq("status", "published")
+    .eq("language", "en")
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(30);
+
+  if (error) {
+    console.error("Unable to load published articles:", error.message);
+    return [];
+  }
+
+  return (data as ArticleRow[]).map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    category: row.category,
+    title: row.title,
+    excerpt: row.excerpt ?? "",
+    content: row.content ?? "",
+    image: row.image_url ?? "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1400&q=85",
+    date: new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(
+      new Date(row.published_at ?? row.created_at),
+    ),
+    author: row.author_name ?? "The-World-Desk",
+  }));
+}
