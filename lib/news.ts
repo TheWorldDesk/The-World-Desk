@@ -27,7 +27,7 @@ type ArticleRow = {
 
 const demoStories: Article[] = [
   ["demo-bangladesh-education","Schools Explore New Ways to Support Student Learning","Education","A sample report about classroom learning and student support.","photo-1503676260728-1c00da094a0b"],
-  ["demo-dhaka-city-life","Dhaka’s Changing Streets and Everyday Life","Bangladesh","A sample city feature about commuting and daily life.","photo-1599586120429-48281b6f0b5a"],
+  ["demo-dhaka-city-life","Dhaka’s Changing Streets and Everyday Life","Earth","A sample city feature about commuting and daily life.","photo-1599586120429-48281b6f0b5a"],
   ["demo-climate-rivers","Communities Look for Ways to Protect Riverbanks","Environment","A sample environment feature about riverbank protection.","photo-1470770841072-f978cf4d019e"],
   ["demo-tech-digital-skills","Digital Skills Open New Opportunities for Young People","Technology","A sample technology feature about practical digital skills.","photo-1516321318423-f06f85e504b3"],
   ["demo-business-small-enterprises","Small Businesses Adapt to a Changing Marketplace","Business","A sample business feature about local shops and customers.","photo-1556742049-0cfed4f6a45d"],
@@ -38,12 +38,12 @@ const demoStories: Article[] = [
   ["demo-science-space","Why Space Research Matters on Earth","Science","A sample explainer about satellites and space research.","photo-1446776811953-b23d57bd21aa"],
   ["demo-travel-green","Responsible Travel Can Support Local Communities","Travel","A sample travel feature about nature and local culture.","photo-1476514525535-07fb3b4ae5f1"],
   ["demo-agriculture-market","Farmers Balance Weather, Costs and Market Demand","Agriculture","A sample agriculture feature about farm planning.","photo-1500382017468-9049fed747ef"],
-  ["demo-transport-safety","Safer Roads Begin With Shared Responsibility","Bangladesh","A sample public-interest feature about road safety.","photo-1494522358652-f30e61a60313"],
+  ["demo-transport-safety","Safer Roads Begin With Shared Responsibility","Earth","A sample public-interest feature about road safety.","photo-1494522358652-f30e61a60313"],
   ["demo-media-literacy","How Readers Can Check Information Before Sharing","Technology","A sample guide to checking sources and context.","photo-1455390582262-044cdead277a"],
   ["demo-jobs-career","Practical Skills Can Strengthen Early Careers","Business","A sample careers feature about communication and learning.","photo-1521737711867-e3b97375f902"],
   ["demo-food-heritage","Local Food Traditions Tell Stories of Place","Culture","A sample feature about food heritage and family recipes.","photo-1504674900247-0877df9cc836"],
   ["demo-renewable-energy","Renewable Energy Draws Interest Around the World","Science","A sample explainer about renewable energy planning.","photo-1509391366360-2e959784a276"],
-  ["demo-community-volunteers","Community Volunteers Help Neighbourhood Initiatives","Bangladesh","A sample community feature about volunteer work.","photo-1559027615-cd4628902d4a"],
+  ["demo-community-volunteers","Community Volunteers Help Neighbourhood Initiatives","Earth","A sample community feature about volunteer work.","photo-1559027615-cd4628902d4a"],
   ["demo-mental-wellbeing","Making Time for Rest in a Busy World","Health","A sample wellbeing feature about rest and support.","photo-1499209974431-9dddcece7f88"],
   ["demo-women-entrepreneurs","Women Entrepreneurs Build Businesses in Their Communities","Business","A sample feature about entrepreneurship.","photo-1551836022-d5d88e9218df"],
   ["demo-wildlife-conservation","Protecting Wildlife Starts With Local Awareness","Environment","A sample environment feature about wildlife conservation.","photo-1472396961693-142e6e269027"],
