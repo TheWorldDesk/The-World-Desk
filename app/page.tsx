@@ -55,7 +55,6 @@ export default async function Home() {
           <p className="mx-auto mt-5 max-w-xl leading-7 text-neutral-600">
             Our newsroom is getting ready. Published stories will appear here as soon as the editorial team adds them.
           </p>
-          <Link href="/admin" className="mt-8 inline-block bg-ink px-6 py-3 text-sm font-bold text-white">Editorial sign in</Link>
         </section>
       )}
 
@@ -81,7 +80,6 @@ export default async function Home() {
         <div className="mx-auto max-w-7xl">
           <div className="text-2xl font-black">The-World-Desk</div>
           <p className="mt-2 text-xs text-white/60">© 2026 The-World-Desk · Independent global journalism</p>
-          <Link href="/admin" className="mt-4 inline-block text-xs underline">Editorial sign in</Link>
         </div>
       </footer>
     </main>
