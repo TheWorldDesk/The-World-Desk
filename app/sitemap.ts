@@ -4,9 +4,10 @@ import { supabase } from "@/lib/supabase";
 export const revalidate = 300;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app";
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app").replace(/\/$/, "");
   const urls: MetadataRoute.Sitemap = [
-    { url: baseUrl, changeFrequency: "hourly", priority: 1 },
+    { url: `${baseUrl}/en`, changeFrequency: "hourly", priority: 1 },
+    { url: `${baseUrl}/en/latest`, changeFrequency: "hourly", priority: 0.8 },
   ];
 
   if (!supabase) return urls;
@@ -25,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const article of data ?? []) {
     urls.push({
-      url: `${baseUrl}/article/${article.slug}`,
+      url: `${baseUrl}/en/article/${article.slug}`,
       lastModified: article.updated_at || article.published_at || new Date(),
       changeFrequency: "weekly",
       priority: 0.7,
