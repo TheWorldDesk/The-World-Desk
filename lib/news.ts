@@ -44,10 +44,10 @@ type TranslationRow = {
   translation_status: string;
 };
 
-function getRequestedLocale(localeOverride?: string): string {
+async function getRequestedLocale(localeOverride?: string): Promise<string> {
   if (localeOverride && isLocale(localeOverride)) return localeOverride;
   try {
-    const value = headers().get("x-twd-locale");
+    const value = (await headers()).get("x-twd-locale");
     return value && isLocale(value) ? value : DEFAULT_LOCALE;
   } catch {
     return DEFAULT_LOCALE;
@@ -55,7 +55,7 @@ function getRequestedLocale(localeOverride?: string): string {
 }
 
 export async function getPublishedArticles(localeOverride?: string): Promise<Article[]> {
-  const locale = getRequestedLocale(localeOverride);
+  const locale = await getRequestedLocale(localeOverride);
   if (!supabase) return [];
 
   const { data, error } = await supabase
@@ -63,8 +63,7 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
     .select("id,slug,category,title,excerpt,content,image_url,author_name,published_at,created_at,source_name,source_url")
     .eq("status", "published")
     .eq("language", "en")
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(30);
+    .order("published_at", { ascending: false, nullsFirst: false });
 
   if (error) {
     console.error("Unable to load published articles:", error.message);
