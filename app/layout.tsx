@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import PageViewTracker from "@/components/PageViewTracker";
 import { DEFAULT_LOCALE, RTL_LOCALES, isLocale } from "@/lib/i18n";
 
 const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app").replace(/\/$/, "");
@@ -94,6 +95,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd).replace(/</g, "\\u003c") }}
         />
         <LanguageSwitcher />
+        <PageViewTracker />
         {children}
       </body>
     </html>
