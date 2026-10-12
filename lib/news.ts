@@ -13,6 +13,7 @@ export type Article = {
   date: string;
   author: string;
   translationLanguage?: string;
+  requestedLocale?: string;
 };
 
 type ArticleRow = {
@@ -87,7 +88,7 @@ function getRequestedLocale(localeOverride?: string): string {
 
 export async function getPublishedArticles(localeOverride?: string): Promise<Article[]> {
   const locale = getRequestedLocale(localeOverride);
-  if (!supabase) return demoStories;
+  if (!supabase) return demoStories.map((article) => ({ ...article, requestedLocale: locale }));
 
   const { data, error } = await supabase
     .from("articles")
@@ -139,6 +140,7 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
         new Date(row.published_at ?? row.created_at),
       ),
       author: row.author_name ?? "The World Desk",
+      requestedLocale: locale,
       ...(translation ? { translationLanguage: LOCALE_LABELS[locale as keyof typeof LOCALE_LABELS] || locale } : {}),
     };
   });
