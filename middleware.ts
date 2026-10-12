@@ -63,6 +63,9 @@ export function middleware(request: NextRequest) {
     const rest = "/" + segments.slice(2).join("/");
     const destination = request.nextUrl.clone();
     destination.pathname = rest === "/" ? "/" : rest.replace(/\/$/, "");
+    if (destination.pathname === "/admin" || destination.pathname.startsWith("/admin/")) {
+      return NextResponse.rewrite(destination);
+    }
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-twd-locale", locale);
     requestHeaders.set("x-twd-direction", RTL_LOCALES.has(locale) ? "rtl" : "ltr");
