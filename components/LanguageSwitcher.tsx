@@ -36,11 +36,11 @@ export default function LanguageSwitcher() {
   return (
     <div className="language-bar">
       <span aria-hidden="true">文</span>
-      <label htmlFor="twd-language">Language</label>
-      <select id="twd-language" value={locale} onChange={(event) => changeLanguage(event.target.value)} aria-label="Choose website language">
+      <label htmlFor="twd-language">{isBangla ? "ভাষা" : "Language"}</label>
+      <select id="twd-language" value={locale} onChange={(event) => changeLanguage(event.target.value)} aria-label={isBangla ? "ওয়েবসাইটের ভাষা বেছে নিন" : "Choose website language"}>
         {languages.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
       </select>
-      <small>Choose your reading language</small>
+      <small>{isBangla ? "আপনার পছন্দের ভাষা বেছে নিন" : "Choose your reading language"}</small>
     </div>
   );
 }
