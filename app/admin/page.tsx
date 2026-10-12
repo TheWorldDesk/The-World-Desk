@@ -26,6 +26,12 @@ export default function AdminPage() {
   const [author, setAuthor] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("draft");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [translationArticleId, setTranslationArticleId] = useState("");
+  const [translationLanguage, setTranslationLanguage] = useState("bn");
+  const [translationTitle, setTranslationTitle] = useState("");
+  const [translationExcerpt, setTranslationExcerpt] = useState("");
+  const [translationContent, setTranslationContent] = useState("");
+  const [translationStatus, setTranslationStatus] = useState<"draft" | "review" | "published">("draft");
 
   async function loadEditor(id: string) {
     if (!supabase) return;
@@ -110,6 +116,27 @@ export default function AdminPage() {
     setBusy(false);
   }
 
+  async function saveTranslation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !userId || !profile || !translationArticleId) return;
+    setBusy(true);
+    setMessage("");
+    const result = await supabase.from("article_translations").upsert({
+      article_id: translationArticleId,
+      language_code: translationLanguage,
+      title: translationTitle.trim(),
+      excerpt: translationExcerpt.trim() || null,
+      content: translationContent.trim(),
+      translation_status: translationStatus,
+      translated_by: email || "editor",
+      reviewed_by: translationStatus === "published" ? userId : null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "article_id,language_code" });
+    if (result.error) setMessage("Could not save translation: " + result.error.message);
+    else setMessage(translationStatus === "published" ? "Translation published." : translationStatus === "review" ? "Translation moved to review." : "Translation draft saved.");
+    setBusy(false);
+  }
+
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
     setUserId(null); setProfile(null); setArticles([]); setMessage("");
@@ -190,6 +217,47 @@ export default function AdminPage() {
                 </div>
               )) : <p className="py-5 text-sm text-neutral-500">No stories yet.</p>}
             </div>
+          </section>
+
+          <section className="mt-10 border border-black/10 bg-white p-6">
+            <h2 className="text-2xl font-black">Translation desk</h2>
+            <p className="mt-2 text-sm leading-6 text-neutral-600">Write or review a translation for an existing story. Only translations marked published are shown to readers; machine-generated text should be checked by a human before publication.</p>
+            <form onSubmit={saveTranslation} className="mt-5 grid gap-4">
+              <label className="text-sm font-bold">Source story *
+                <select required value={translationArticleId} onChange={(e) => {
+                  const selected = articles.find((item) => item.id === e.target.value);
+                  setTranslationArticleId(e.target.value);
+                  if (selected && !translationTitle) setTranslationTitle(selected.title);
+                  if (selected && !translationExcerpt) setTranslationExcerpt(selected.excerpt || "");
+                  if (selected && !translationContent) setTranslationContent(selected.content || "");
+                }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
+                  <option value="">Choose a story</option>
+                  {articles.map((item) => <option key={item.id} value={item.id}>{item.title} ({item.status})</option>)}
+                </select>
+              </label>
+              <label className="text-sm font-bold">Target language *
+                <select value={translationLanguage} onChange={(e) => setTranslationLanguage(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
+                  {[
+                    ["bn","বাংলা"],["ar","العربية"],["fa","فارسی"],["ur","اردو"],["hi","हिन्दी"],["es","Español"],["fr","Français"],["zh-CN","简体中文"],["zh-TW","繁體中文"],["pt","Português"],["ru","Русский"],["ja","日本語"],["de","Deutsch"],["it","Italiano"],["id","Bahasa Indonesia"],["tr","Türkçe"],["ko","한국어"],["vi","Tiếng Việt"],["sw","Kiswahili"],["th","ไทย"],["nl","Nederlands"],["pl","Polski"],["uk","Українська"],["ms","Bahasa Melayu"],["ta","தமிழ்"],["te","తెలుగు"],["ml","മലയാളം"],["mr","मराठी"],["gu","ગુજરાતી"],["pa","ਪੰਜਾਬੀ"],["ne","नेपाली"]
+                  ].map(([code, label]) => <option key={code} value={code}>{label} ({code})</option>)}
+                </select>
+              </label>
+              <label className="text-sm font-bold">Translated headline *
+                <input required value={translationTitle} onChange={(e) => setTranslationTitle(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">Translated summary
+                <textarea rows={3} value={translationExcerpt} onChange={(e) => setTranslationExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">Translated story *
+                <textarea required rows={10} value={translationContent} onChange={(e) => setTranslationContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">Workflow status
+                <select value={translationStatus} onChange={(e) => setTranslationStatus(e.target.value as "draft" | "review" | "published")} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
+                  <option value="draft">Draft — not public</option><option value="review">Needs review — not public</option><option value="published">Publish translation</option>
+                </select>
+              </label>
+              <button disabled={busy || !translationArticleId} className="justify-self-start bg-accent px-6 py-3 font-bold text-white disabled:opacity-50">{busy ? "Saving…" : "Save translation"}</button>
+            </form>
           </section>
         </>
       )}
