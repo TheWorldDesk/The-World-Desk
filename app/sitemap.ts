@@ -6,8 +6,30 @@ export const revalidate = 300;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app").replace(/\/$/, "");
   const urls: MetadataRoute.Sitemap = [
-    { url: `${baseUrl}/en`, changeFrequency: "hourly", priority: 1 },
-    { url: `${baseUrl}/en/latest`, changeFrequency: "hourly", priority: 0.8 },
+    {
+      url: `${baseUrl}/en`,
+      changeFrequency: "hourly",
+      priority: 1,
+      alternates: { languages: { en: `${baseUrl}/en`, bn: `${baseUrl}/bn` } },
+    },
+    {
+      url: `${baseUrl}/bn`,
+      changeFrequency: "hourly",
+      priority: 1,
+      alternates: { languages: { en: `${baseUrl}/en`, bn: `${baseUrl}/bn` } },
+    },
+    {
+      url: `${baseUrl}/en/latest`,
+      changeFrequency: "hourly",
+      priority: 0.8,
+      alternates: { languages: { en: `${baseUrl}/en/latest`, bn: `${baseUrl}/bn/latest` } },
+    },
+    {
+      url: `${baseUrl}/bn/latest`,
+      changeFrequency: "hourly",
+      priority: 0.8,
+      alternates: { languages: { en: `${baseUrl}/en/latest`, bn: `${baseUrl}/bn/latest` } },
+    },
   ];
 
   if (!supabase) return urls;
