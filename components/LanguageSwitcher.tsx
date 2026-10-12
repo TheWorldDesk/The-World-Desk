@@ -2,17 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { LOCALE_LABELS, SUPPORTED_LOCALES } from "@/lib/i18n";
 
-const languages = [
-  ["en", "English"], ["bn", "বাংলা"], ["ar", "العربية"], ["hi", "हिन्दी"],
-  ["es", "Español"], ["fr", "Français"], ["zh-CN", "简体中文"], ["zh-TW", "繁體中文"],
-  ["pt", "Português"], ["ru", "Русский"], ["ja", "日本語"], ["de", "Deutsch"],
-  ["it", "Italiano"], ["id", "Bahasa Indonesia"], ["tr", "Türkçe"], ["ko", "한국어"],
-  ["vi", "Tiếng Việt"], ["ur", "اردو"], ["sw", "Kiswahili"], ["fa", "فارسی"],
-  ["th", "ไทย"], ["nl", "Nederlands"], ["pl", "Polski"], ["uk", "Українська"],
-  ["ms", "Bahasa Melayu"], ["ta", "தமிழ்"], ["te", "తెలుగు"], ["ml", "മലയാളം"],
-  ["mr", "मराठी"], ["gu", "ગુજરાતી"], ["pa", "ਪੰਜਾਬੀ"], ["ne", "नेपाली"],
-] as const;
+const languages = SUPPORTED_LOCALES.map((code) => [code, LOCALE_LABELS[code]] as const);
 
 const localeSet = new Set<string>(languages.map(([code]) => code));
 
