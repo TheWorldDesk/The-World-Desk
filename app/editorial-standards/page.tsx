@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Editorial Standards",
-  description: "The World Desk's standards for accuracy, sourcing, fairness, corrections and responsible use of AI.",
+  title: "Editorial Standards, Ethics & Accuracy",
+  description: "Explore The World Desk editorial standards for fact-checking, sourcing, fairness, AI-assisted work, image use, transparency, updates and corrections.",
 };
 
 export default function EditorialStandardsPage() {
