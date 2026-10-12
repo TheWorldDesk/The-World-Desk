@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Profile = { display_name: string | null; role: "editor" | "admin" };
-type Article = { id: string; title: string; slug: string; category: string; status: string; created_at: string };
+type Article = { id: string; title: string; slug: string; category: string; status: string; excerpt: string | null; content: string | null; image_url: string | null; author_name: string | null; created_at: string };
 
 export default function AdminPage() {
   const [email, setEmail] = useState("");
@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [author, setAuthor] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("draft");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function loadEditor(id: string) {
     if (!supabase) return;
@@ -43,7 +44,7 @@ export default function AdminPage() {
     setAuthor(editor.display_name || "");
     const { data, error: listError } = await supabase
       .from("articles")
-      .select("id,title,slug,category,status,created_at")
+      .select("id,title,slug,category,status,excerpt,content,image_url,author_name,created_at")
       .order("created_at", { ascending: false })
       .limit(50);
     if (listError) setMessage("Could not load articles: " + listError.message);
@@ -90,23 +91,20 @@ export default function AdminPage() {
     setBusy(true);
     setMessage("");
     const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
-    const { error } = await supabase.from("articles").insert({
-      slug: cleanSlug,
-      title: title.trim(),
-      excerpt: excerpt.trim() || null,
-      content: content.trim() || null,
-      category,
-      image_url: imageUrl.trim() || null,
+    const payload = {
+      slug: cleanSlug, title: title.trim(), excerpt: excerpt.trim() || null,
+      content: content.trim() || null, category, image_url: imageUrl.trim() || null,
       author_name: author.trim() || profile.display_name || "The-World-Desk",
-      language: "en",
-      status,
+      language: "en", status,
       published_at: status === "published" ? new Date().toISOString() : null,
-    });
-    if (error) {
-      setMessage("Could not save story: " + error.message);
-    } else {
-      setMessage(status === "published" ? "Story published." : "Draft saved.");
-      setTitle(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl("");
+    };
+    const result = editingId
+      ? await supabase.from("articles").update(payload).eq("id", editingId)
+      : await supabase.from("articles").insert(payload);
+    if (result.error) setMessage("Could not save story: " + result.error.message);
+    else {
+      setMessage(editingId ? "Story updated." : status === "published" ? "Story published." : "Draft saved.");
+      setTitle(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setEditingId(null);
       await loadEditor(userId);
     }
     setBusy(false);
@@ -150,7 +148,8 @@ export default function AdminPage() {
             <button onClick={signOut} className="border border-black/20 px-4 py-2 text-sm font-bold">Sign out</button>
           </div>
           <form onSubmit={publishArticle} className="mt-8 grid gap-5 border border-black/10 bg-white p-6">
-            <h2 className="text-2xl font-black">Write a story</h2>
+            <h2 className="text-2xl font-black">{editingId ? "Edit story" : "Write a story"}</h2>
+            {editingId && <button type="button" onClick={() => { setEditingId(null); setTitle(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft"); setMessage("Edit cancelled."); }} className="justify-self-start border border-black/20 px-4 py-2 text-sm font-bold">Cancel editing</button>}
             <label className="text-sm font-bold">Headline *
               <input required value={title} onChange={(e) => { setTitle(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
             </label>
@@ -179,7 +178,7 @@ export default function AdminPage() {
                 <option value="draft">Save as draft</option><option value="published">Publish now</option>
               </select>
             </label>
-            <button disabled={busy} className="justify-self-start bg-accent px-6 py-3 font-bold text-white disabled:opacity-50">{busy ? "Saving…" : status === "published" ? "Publish story" : "Save draft"}</button>
+            <button disabled={busy} className="justify-self-start bg-accent px-6 py-3 font-bold text-white disabled:opacity-50">{busy ? "Saving…" : editingId ? "Update story" : status === "published" ? "Publish story" : "Save draft"}</button>
           </form>
           <section className="mt-10">
             <h2 className="text-2xl font-black">Recent stories</h2>
@@ -187,7 +186,7 @@ export default function AdminPage() {
               {articles.length ? articles.map((article) => (
                 <div key={article.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div><p className="font-bold">{article.title}</p><p className="mt-1 text-xs text-neutral-500">/{article.slug} · {article.category}</p></div>
-                  <span className="text-xs font-black uppercase tracking-widest">{article.status}</span>
+                  <div className="flex items-center gap-3"><span className="text-xs font-black uppercase tracking-widest">{article.status}</span><button type="button" onClick={() => { setEditingId(article.id); setTitle(article.title); setSlug(article.slug); setCategory(article.category); setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || ""); setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft"); setMessage("Editing selected story."); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="border border-black/20 px-3 py-2 text-xs font-bold">Edit</button></div>
                 </div>
               )) : <p className="py-5 text-sm text-neutral-500">No stories yet.</p>}
             </div>
