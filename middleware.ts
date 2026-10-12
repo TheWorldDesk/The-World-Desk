@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_LOCALE, isLocale, localeFromAcceptLanguage, RTL_LOCALES } from "@/lib/i18n";
+import { DEFAULT_LOCALE, isLocale, localeFromAcceptLanguage, RTL_LOCALES, type Locale } from "@/lib/i18n";
 
 const LOCALE_COOKIE = "twd-locale";
 
@@ -29,7 +29,7 @@ function localeFromSearchText(text: string): string | null {
   return null;
 }
 
-function requestedLocale(request: NextRequest): string {
+function requestedLocale(request: NextRequest): Locale {
   const saved = request.cookies.get(LOCALE_COOKIE)?.value;
   const queryLocale = localeFromSearchText(request.nextUrl.searchParams.get("q") || "");
   if (queryLocale && isLocale(queryLocale)) return queryLocale;
