@@ -11,6 +11,7 @@ export type Article = {
   content: string;
   image: string;
   date: string;
+  publishedAt?: string;
   author: string;
   translationLanguage?: string;
   requestedLocale?: string;
@@ -100,10 +101,10 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
 
   if (error) {
     console.error("Unable to load published articles:", error.message);
-    return demoStories;
+    return demoStories.map((article) => ({ ...article, requestedLocale: locale }));
   }
 
-  if (!data?.length) return demoStories;
+  if (!data?.length) return demoStories.map((article) => ({ ...article, requestedLocale: locale }));
   const rows = data as ArticleRow[];
   const translations = new Map<string, TranslationRow>();
 
@@ -139,6 +140,7 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
       date: new Intl.DateTimeFormat(dateLocale, { dateStyle: "medium" }).format(
         new Date(row.published_at ?? row.created_at),
       ),
+      publishedAt: row.published_at ?? row.created_at,
       author: row.author_name ?? "The World Desk",
       requestedLocale: locale,
       ...(translation ? { translationLanguage: LOCALE_LABELS[locale as keyof typeof LOCALE_LABELS] || locale } : {}),
