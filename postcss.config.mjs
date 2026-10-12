@@ -1,3 +1,4 @@
+// Explicit Tailwind CSS v4 PostCSS plugin; do not replace with `tailwindcss`.
 // Tailwind CSS v4 PostCSS plugin entry point.
 const config = {
   plugins: {
