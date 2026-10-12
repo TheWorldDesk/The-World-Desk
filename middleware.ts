@@ -6,22 +6,22 @@ const LOCALE_COOKIE = "twd-locale";
 function localeFromSearchText(text: string): string | null {
   const query = text.trim();
   if (!query) return null;
-  if (/[\\u0980-\\u09FF]/u.test(query)) return "bn";
-  if (/[\\u0B80-\\u0BFF]/u.test(query)) return "ta";
-  if (/[\\u0C00-\\u0C7F]/u.test(query)) return "te";
-  if (/[\\u0D00-\\u0D7F]/u.test(query)) return "ml";
-  if (/[\\u0A80-\\u0AFF]/u.test(query)) return "gu";
-  if (/[\\u0A00-\\u0A7F]/u.test(query)) return "pa";
-  if (/[\\u0900-\\u097F]/u.test(query)) return "hi";
-  if (/[\\u0E00-\\u0E7F]/u.test(query)) return "th";
-  if (/[\\uAC00-\\uD7AF]/u.test(query)) return "ko";
-  if (/[\\u3040-\\u30FF]/u.test(query)) return "ja";
-  if (/[\\u4E00-\\u9FFF]/u.test(query)) return "zh-CN";
-  if (/[\\u0600-\\u06FF]/u.test(query)) return null; // Arabic, Persian and Urdu share script; use browser preference.
-  if (/[\\u0400-\\u04FF]/u.test(query)) return /[іїєґ]/iu.test(query) ? "uk" : "ru";
-  if (/[\\u0370-\\u03FF]/u.test(query)) return null;
+  if (/[\u0980-\u09FF]/u.test(query)) return "bn";
+  if (/[\u0B80-\u0BFF]/u.test(query)) return "ta";
+  if (/[\u0C00-\u0C7F]/u.test(query)) return "te";
+  if (/[\u0D00-\u0D7F]/u.test(query)) return "ml";
+  if (/[\u0A80-\u0AFF]/u.test(query)) return "gu";
+  if (/[\u0A00-\u0A7F]/u.test(query)) return "pa";
+  if (/[\u0900-\u097F]/u.test(query)) return "hi";
+  if (/[\u0E00-\u0E7F]/u.test(query)) return "th";
+  if (/[\uAC00-\uD7AF]/u.test(query)) return "ko";
+  if (/[\u3040-\u30FF]/u.test(query)) return "ja";
+  if (/[\u4E00-\u9FFF]/u.test(query)) return "zh-CN";
+  if (/[\u0600-\u06FF]/u.test(query)) return null; // Arabic, Persian and Urdu share script; use browser preference.
+  if (/[\u0400-\u04FF]/u.test(query)) return /[іїєґ]/iu.test(query) ? "uk" : "ru";
+  if (/[\u0370-\u03FF]/u.test(query)) return null;
   // An unaccented Latin-script query is treated as English; otherwise use browser preferences.
-  if (/^[\\x00-\\x7F\\s\\p{P}\\p{N}]+$/u.test(query)) return "en";
+  if (/^[\x00-\x7F\s\p{P}\p{N}]+$/u.test(query)) return "en";
   return null;
 }
 
