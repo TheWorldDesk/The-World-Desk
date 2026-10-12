@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function PageViewTracker() {
+  const pathname = usePathname();
   useEffect(() => {
     if (!supabase) return;
-    const path = window.location.pathname;
+    const path = pathname || window.location.pathname;
     if (path.startsWith("/admin")) return;
     let visitorId = "";
     try {
@@ -25,6 +27,6 @@ export default function PageViewTracker() {
       visitor_id: visitorId,
       referrer: document.referrer ? document.referrer.slice(0, 1000) : null,
     });
-  }, []);
+  }, [pathname]);
   return null;
 }
