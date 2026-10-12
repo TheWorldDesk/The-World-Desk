@@ -11,6 +11,7 @@ export type Article = {
   content: string;
   image: string;
   date: string;
+  timeAgo: string;
   publishedAt?: string;
   author: string;
   translationLanguage?: string;
@@ -106,6 +107,7 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
       date: new Intl.DateTimeFormat(dateLocale, { dateStyle: "medium" }).format(
         new Date(row.published_at ?? row.created_at),
       ),
+      timeAgo: (() => { const seconds = Math.max(0, Math.floor((Date.now() - new Date(row.published_at ?? row.created_at).getTime()) / 1000)); const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }); if (seconds < 60) return rtf.format(-seconds, "second"); if (seconds < 3600) return rtf.format(-Math.floor(seconds / 60), "minute"); if (seconds < 86400) return rtf.format(-Math.floor(seconds / 3600), "hour"); if (seconds < 604800) return rtf.format(-Math.floor(seconds / 86400), "day"); if (seconds < 2592000) return rtf.format(-Math.floor(seconds / 604800), "week"); if (seconds < 31536000) return rtf.format(-Math.floor(seconds / 2592000), "month"); return rtf.format(-Math.floor(seconds / 31536000), "year"); })(),
       publishedAt: row.published_at ?? row.created_at,
       author: row.author_name ?? "The World Desk",
       requestedLocale: locale,
