@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const supportedLanguages = new Set([
+const localePrefixes = new Set(["en", "bn", "ar", "hi", "es", "fr", "zh-CN", "zh-TW", "pt", "ru", "ja", "de", "it", "id", "tr", "ko", "vi", "ur", "sw", "fa", "th", "nl", "pl", "uk", "ms", "ta", "te", "mr", "gu", "pa", "ne"]);\n\nconst supportedLanguages = new Set([
   "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg", "ca",
   "ceb", "zh-CN", "zh-TW", "co", "hr", "cs", "da", "nl", "en", "eo", "et",
   "fi", "fr", "fy", "gl", "ka", "de", "el", "gu", "ht", "ha", "haw", "he",
@@ -51,7 +51,7 @@ export default function LanguageSwitcher() {
 
     // The URL is authoritative: /en stays English; /bn, /ar, etc. translate to that locale.
     if (pathLocale === "en") return;
-    if (pathLocale && supportedLanguages.has(pathLocale)) {
+    if (pathLocale && localePrefixes.has(pathLocale)) {
       targetLanguage = pathLocale;
     }
 
