@@ -236,7 +236,7 @@ export default function AdminPage() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
-      <Link href="/" className="font-bold text-accent">← View site</Link>
+      <div className="flex flex-wrap items-center gap-5"><Link href="/" className="font-bold text-accent">← View site</Link><Link href="/admin/analytics" className="font-bold underline">Analytics & Monetization →</Link></div>
       <p className="mt-10 text-xs font-black uppercase tracking-widest text-accent">The-World-Desk newsroom</p>
       <h1 className="mt-2 text-4xl font-black">Editorial workspace</h1>
       <p className="mt-3 max-w-2xl leading-7 text-neutral-600">Sign in with an approved newsroom account to save drafts or publish English stories. Database permissions are enforced by Supabase Row Level Security.</p>
