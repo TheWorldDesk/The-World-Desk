@@ -137,6 +137,46 @@ export default function AdminPage() {
     setBusy(false);
   }
 
+  async function autoTranslateArticle(articleId: string) {
+    if (!supabase || !userId || !profile) return;
+    setBusy(true);
+    setMessage("Preparing automatic translations…");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    const { data: source, error } = await supabase.from("articles")
+      .select("title,excerpt,content")
+      .eq("id", articleId)
+      .maybeSingle();
+    if (error || !source || !token) {
+      setMessage("Could not load source story or editor session.");
+      setBusy(false);
+      return;
+    }
+    const languages = ["bn","ar","hi","es","fr","zh-CN","zh-TW","pt","ru","ja","de","it","id","tr","ko","vi","ur","sw","fa","th","nl","pl","uk","ms","ta","te","ml","mr","gu","pa","ne"];
+    let saved = 0;
+    const failures: string[] = [];
+    for (const language of languages) {
+      setMessage("Translating " + language + " (" + (saved + failures.length + 1) + "/" + languages.length + ")…");
+      try {
+        const response = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "content-type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({
+            articleId, targetLanguage: language, save: true,
+            title: source.title, excerpt: source.excerpt || "", content: source.content || "",
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) failures.push(language + ": " + (payload.error || response.status));
+        else saved += 1;
+      } catch {
+        failures.push(language + ": network error");
+      }
+    }
+    setMessage("Automatic translation finished: " + saved + "/" + languages.length + " languages saved as drafts." + (failures.length ? " Failed: " + failures.join(", ") : "") + " Review translations in the Translation desk before publishing.");
+    setBusy(false);
+  }
+
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
     setUserId(null); setProfile(null); setArticles([]); setMessage("");
@@ -213,7 +253,7 @@ export default function AdminPage() {
               {articles.length ? articles.map((article) => (
                 <div key={article.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div><p className="font-bold">{article.title}</p><p className="mt-1 text-xs text-neutral-500">/{article.slug} · {article.category}</p></div>
-                  <div className="flex items-center gap-3"><span className="text-xs font-black uppercase tracking-widest">{article.status}</span><button type="button" onClick={() => { setEditingId(article.id); setTitle(article.title); setSlug(article.slug); setCategory(article.category); setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || ""); setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft"); setMessage("Editing selected story."); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="border border-black/20 px-3 py-2 text-xs font-bold">Edit</button></div>
+                  <div className="flex items-center gap-3"><span className="text-xs font-black uppercase tracking-widest">{article.status}</span><button type="button" onClick={() => { setEditingId(article.id); setTitle(article.title); setSlug(article.slug); setCategory(article.category); setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || ""); setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft"); setMessage("Editing selected story."); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="border border-black/20 px-3 py-2 text-xs font-bold">Edit</button><button type="button" disabled={busy || article.status !== "published"} onClick={() => void autoTranslateArticle(article.id)} className="border border-black/20 px-3 py-2 text-xs font-bold disabled:opacity-50">Auto-translate 32 languages</button></div>
                 </div>
               )) : <p className="py-5 text-sm text-neutral-500">No stories yet.</p>}
             </div>
