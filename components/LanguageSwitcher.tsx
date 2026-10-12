@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const localePrefixes = new Set(["en", "bn", "ar", "hi", "es", "fr", "zh-CN", "zh-TW", "pt", "ru", "ja", "de", "it", "id", "tr", "ko", "vi", "ur", "sw", "fa", "th", "nl", "pl", "uk", "ms", "ta", "te", "mr", "gu", "pa", "ne"]);\n\nconst supportedLanguages = new Set([
+const localePrefixes = new Set(["en", "bn", "ar", "hi", "es", "fr", "zh-CN", "zh-TW", "pt", "ru", "ja", "de", "it", "id", "tr", "ko", "vi", "ur", "sw", "fa", "th", "nl", "pl", "uk", "ms", "ta", "te", "ml", "mr", "gu", "pa", "ne"]);\n\nconst supportedLanguages = new Set([
   "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg", "ca",
   "ceb", "zh-CN", "zh-TW", "co", "hr", "cs", "da", "nl", "en", "eo", "et",
   "fi", "fr", "fy", "gl", "ka", "de", "el", "gu", "ht", "ha", "haw", "he",
