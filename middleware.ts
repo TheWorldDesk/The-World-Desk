@@ -17,7 +17,11 @@ function localeFromSearchText(text: string): string | null {
   if (/[\uAC00-\uD7AF]/u.test(query)) return "ko";
   if (/[\u3040-\u30FF]/u.test(query)) return "ja";
   if (/[\u4E00-\u9FFF]/u.test(query)) return "zh-CN";
-  if (/[\u0600-\u06FF]/u.test(query)) {\n    if (/[پچژگ]/u.test(query)) return "fa";\n    if (/[ٹڈڑںھۓے]/u.test(query)) return "ur";\n    return "ar";\n  }
+  if (/[\u0600-\u06FF]/u.test(query)) {
+    if (/[پچژگ]/u.test(query)) return "fa";
+    if (/[ٹڈڑںھۓے]/u.test(query)) return "ur";
+    return "ar";
+  }
   if (/[\u0400-\u04FF]/u.test(query)) return /[іїєґ]/iu.test(query) ? "uk" : "ru";
   if (/[\u0370-\u03FF]/u.test(query)) return null;
   // An unaccented Latin-script query is treated as English; otherwise use browser preferences.
