@@ -1,56 +1,71 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
 
-const languages = [
-  { code: "en", label: "English" },
-  { code: "bn", label: "বাংলা (Bengali)" },
-  { code: "es", label: "Español (Spanish)" },
-  { code: "fr", label: "Français (French)" },
-  { code: "ar", label: "العربية (Arabic)" },
-  { code: "hi", label: "हिन्दी (Hindi)" },
-  { code: "zh-CN", label: "中文 (Chinese)" },
-  { code: "pt", label: "Português (Portuguese)" },
-  { code: "ru", label: "Русский (Russian)" },
-  { code: "ja", label: "日本語 (Japanese)" },
-  { code: "de", label: "Deutsch (German)" },
-  { code: "it", label: "Italiano (Italian)" },
-  { code: "id", label: "Bahasa Indonesia" },
-  { code: "tr", label: "Türkçe (Turkish)" },
-];
+const supportedLanguages = new Set([
+  "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg", "ca",
+  "ceb", "zh-CN", "zh-TW", "co", "hr", "cs", "da", "nl", "en", "eo", "et",
+  "fi", "fr", "fy", "gl", "ka", "de", "el", "gu", "ht", "ha", "haw", "he",
+  "hi", "hmn", "hu", "is", "ig", "id", "ga", "it", "ja", "jv", "kn", "kk",
+  "km", "rw", "ko", "ku", "ky", "lo", "la", "lv", "lt", "lb", "mk", "mg",
+  "ms", "ml", "mt", "mi", "mr", "mn", "my", "ne", "no", "ny", "or", "ps",
+  "fa", "pl", "pt", "pa", "ro", "ru", "sm", "gd", "sr", "st", "sn", "sd",
+  "si", "sk", "sl", "so", "es", "su", "sw", "sv", "tl", "tg", "ta", "tt",
+  "te", "th", "tr", "tk", "uk", "ur", "uz", "vi", "cy", "xh", "yi", "yo",
+  "zu",
+]);
+
+function normalizeLanguage(language: string): string | null {
+  const base = language.trim().toLowerCase().split("-")[0];
+  if (!base || base === "en") return null;
+  if (base === "zh") {
+    return language.toLowerCase().includes("tw") || language.toLowerCase().includes("hk")
+      ? "zh-TW"
+      : "zh-CN";
+  }
+  return supportedLanguages.has(base) ? base : null;
+}
 
 export default function LanguageSwitcher() {
-  const [language, setLanguage] = useState("en");
+  useEffect(() => {
+    // Google Translate's translated-page proxy must never be redirected again.
+    if (window.location.hostname.includes("translate.google")) return;
 
-  function changeLanguage(code: string) {
-    setLanguage(code);
-    if (code === "en") {
-      window.location.href = window.location.origin + window.location.pathname + window.location.search;
-      return;
+    // Respect a user's explicit choice for this browser session.
+    try {
+      if (window.sessionStorage.getItem("twd-language-choice") === "en") return;
+      if (window.sessionStorage.getItem("twd-auto-translation-started") === "1") return;
+    } catch {
+      // Continue with browser-language detection if storage is unavailable.
     }
+
+    const preferredLanguages =
+      Array.isArray(navigator.languages) && navigator.languages.length
+        ? navigator.languages
+        : [navigator.language];
+
+    let targetLanguage: string | null = null;
+    for (const language of preferredLanguages) {
+      targetLanguage = normalizeLanguage(language);
+      if (targetLanguage) break;
+    }
+
+    if (!targetLanguage) return;
+
+    try {
+      window.sessionStorage.setItem("twd-auto-translation-started", "1");
+    } catch {
+      // The redirect still works when storage is unavailable.
+    }
+
     const currentUrl = window.location.href;
-    window.location.href =
+    const translateUrl =
       "https://translate.google.com/translate?sl=auto&tl=" +
-      encodeURIComponent(code) +
+      encodeURIComponent(targetLanguage) +
       "&u=" +
       encodeURIComponent(currentUrl);
-  }
+    window.location.replace(translateUrl);
+  }, []);
 
-  return (
-    <div className="language-bar" aria-label="Website language">
-      <span aria-hidden="true">文</span>
-      <label htmlFor="site-language">Language</label>
-      <select
-        id="site-language"
-        value={language}
-        onChange={(event) => changeLanguage(event.target.value)}
-        aria-label="Choose website language"
-      >
-        {languages.map((item) => (
-          <option key={item.code} value={item.code}>{item.label}</option>
-        ))}
-      </select>
-      <small>Translations are automated and may contain errors.</small>
-    </div>
-  );
+  return null;
 }
