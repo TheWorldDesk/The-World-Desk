@@ -1,4 +1,5 @@
-import Link from "next/link";\nimport {headers} from "next/headers";
+import Link from "next/link";
+import {headers} from "next/headers";
 import {getPublishedArticles} from "@/lib/news";
 export const revalidate=60;
 const sections=["World","Africa","Asia","Europe","Middle East","North America","Latin America","Earth","Politics","Business","Technology","Science","Climate","Health","Sports","Culture"];
