@@ -1,7 +1,7 @@
 export const SUPPORTED_LOCALES = [
   "en", "bn", "ar", "hi", "es", "fr", "zh-CN", "zh-TW", "pt", "ru", "ja",
   "de", "it", "id", "tr", "ko", "vi", "ur", "sw", "fa", "th",
-  "nl", "pl", "uk", "ms", "ta", "te", "mr", "gu", "pa", "ne",
+  "nl", "pl", "uk", "ms", "ta", "te", "ml", "mr", "gu", "pa", "ne",
 ] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -44,6 +44,6 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   ja: "日本語", de: "Deutsch", it: "Italiano", id: "Bahasa Indonesia",
   tr: "Türkçe", ko: "한국어", vi: "Tiếng Việt", ur: "اردو", sw: "Kiswahili",
   fa: "فارسی", th: "ไทย", nl: "Nederlands", pl: "Polski", uk: "Українська",
-  ms: "Bahasa Melayu", ta: "தமிழ்", te: "తెలుగు", mr: "मराठी", gu: "ગુજરાતી",
+  ms: "Bahasa Melayu", ta: "தமிழ்", te: "తెలుగు", ml: "മലയാളം", mr: "मराठी", gu: "ગુજરાતી",
   pa: "ਪੰਜਾਬੀ", ne: "नेपाली",
 };
