@@ -59,7 +59,7 @@ export default function LanguageSwitcher() {
     // Respect an explicit English preference for this browser session.
     try {
       if (!targetLanguage && window.sessionStorage.getItem("twd-language-choice") === "en") return;
-      if (window.sessionStorage.getItem("twd-auto-translation-started") === "1") return;
+      if (!targetLanguage && window.sessionStorage.getItem("twd-auto-translation-started") === "1") return;
     } catch {
       // Storage may be disabled; continue with browser-language detection.
     }
