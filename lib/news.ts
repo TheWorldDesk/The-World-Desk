@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_LOCALE, isLocale, LOCALE_LABELS } from "@/lib/i18n";
 
 export type Article = {
   id: string;
@@ -10,6 +12,7 @@ export type Article = {
   image: string;
   date: string;
   author: string;
+  translationLanguage?: string;
 };
 
 type ArticleRow = {
@@ -23,6 +26,16 @@ type ArticleRow = {
   author_name: string | null;
   published_at: string | null;
   created_at: string;
+};
+
+type TranslationRow = {
+  article_id: string;
+  language_code: string;
+  title: string;
+  excerpt: string | null;
+  content: string | null;
+  category: string | null;
+  translation_status: string;
 };
 
 const demoStories: Article[] = [
@@ -62,7 +75,18 @@ const demoStories: Article[] = [
   author: "The World Desk Demo",
 }));
 
-export async function getPublishedArticles(): Promise<Article[]> {
+function getRequestedLocale(localeOverride?: string): string {
+  if (localeOverride && isLocale(localeOverride)) return localeOverride;
+  try {
+    const value = headers().get("x-twd-locale");
+    return value && isLocale(value) ? value : DEFAULT_LOCALE;
+  } catch {
+    return DEFAULT_LOCALE;
+  }
+}
+
+export async function getPublishedArticles(localeOverride?: string): Promise<Article[]> {
+  const locale = getRequestedLocale(localeOverride);
   if (!supabase) return demoStories;
 
   const { data, error } = await supabase
@@ -79,18 +103,43 @@ export async function getPublishedArticles(): Promise<Article[]> {
   }
 
   if (!data?.length) return demoStories;
+  const rows = data as ArticleRow[];
+  const translations = new Map<string, TranslationRow>();
 
-  return (data as ArticleRow[]).map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    category: row.category,
-    title: row.title,
-    excerpt: row.excerpt ?? "",
-    content: row.content ?? "",
-    image: row.image_url ?? "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1400&q=85",
-    date: new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(
-      new Date(row.published_at ?? row.created_at),
-    ),
-    author: row.author_name ?? "The-World-Desk",
-  }));
+  if (locale !== "en") {
+    const { data: translatedRows, error: translationError } = await supabase
+      .from("article_translations")
+      .select("article_id,language_code,title,excerpt,content,category,translation_status")
+      .eq("language_code", locale)
+      .eq("translation_status", "published")
+      .in("article_id", rows.map((row) => row.id));
+
+    if (translationError) {
+      // Keep original articles available if translations are not configured or query fails.
+      console.error("Unable to load published article translations:", translationError.message);
+    } else {
+      for (const row of (translatedRows ?? []) as TranslationRow[]) {
+        translations.set(row.article_id, row);
+      }
+    }
+  }
+
+  const dateLocale = locale === "zh-CN" || locale === "zh-TW" ? locale : locale;
+  return rows.map((row) => {
+    const translation = translations.get(row.id);
+    return {
+      id: row.id,
+      slug: row.slug,
+      category: translation?.category || row.category,
+      title: translation?.title || row.title,
+      excerpt: translation?.excerpt ?? row.excerpt ?? "",
+      content: translation?.content || row.content || "",
+      image: row.image_url ?? "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1400&q=85",
+      date: new Intl.DateTimeFormat(dateLocale, { dateStyle: "medium" }).format(
+        new Date(row.published_at ?? row.created_at),
+      ),
+      author: row.author_name ?? "The World Desk",
+      ...(translation ? { translationLanguage: LOCALE_LABELS[locale as keyof typeof LOCALE_LABELS] || locale } : {}),
+    };
+  });
 }
