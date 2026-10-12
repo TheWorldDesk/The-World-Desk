@@ -31,8 +31,7 @@ function normalizeLanguage(language: string): string | null {
 
 export default function LanguageSwitcher() {
   useEffect(() => {
-    // This is a best-effort browser translation fallback, not native localization.
-    // Keep it away from editor routes, APIs and framework/static assets.
+    // Google Translate's proxy must never be redirected to itself.
     if (window.location.hostname.includes("translate.google")) return;
 
     const { pathname, search } = window.location;
@@ -42,30 +41,40 @@ export default function LanguageSwitcher() {
       pathname.startsWith("/_next/") ||
       pathname === "/robots.txt" ||
       pathname === "/sitemap.xml" ||
-      /\.(?:png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|xml)$/i.test(pathname)
+      /\.(?:png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|xml|txt)$/i.test(pathname)
     ) {
       return;
     }
 
-    // Respect an explicit English preference for the current browser session.
+    const pathLocale = pathname.split("/")[1];
+    let targetLanguage: string | null = null;
+
+    // The URL is authoritative: /en stays English; /bn, /ar, etc. translate to that locale.
+    if (pathLocale === "en") return;
+    if (pathLocale && supportedLanguages.has(pathLocale)) {
+      targetLanguage = pathLocale;
+    }
+
+    // Respect an explicit English preference for this browser session.
     try {
-      if (window.sessionStorage.getItem("twd-language-choice") === "en") return;
+      if (!targetLanguage && window.sessionStorage.getItem("twd-language-choice") === "en") return;
       if (window.sessionStorage.getItem("twd-auto-translation-started") === "1") return;
     } catch {
-      // Storage may be disabled; language detection can still proceed.
+      // Storage may be disabled; continue with browser-language detection.
     }
 
-    const preferredLanguages =
-      Array.isArray(navigator.languages) && navigator.languages.length
-        ? navigator.languages
-        : [navigator.language];
+    if (!targetLanguage) {
+      const preferredLanguages =
+        Array.isArray(navigator.languages) && navigator.languages.length
+          ? navigator.languages
+          : [navigator.language];
 
-    let targetLanguage: string | null = null;
-    for (const language of preferredLanguages) {
-      targetLanguage = normalizeLanguage(language);
-      if (targetLanguage) break;
+      for (const language of preferredLanguages) {
+        targetLanguage = normalizeLanguage(language);
+        if (targetLanguage) break;
+      }
     }
-    if (!targetLanguage) return;
+    if (!targetLanguage || targetLanguage === "en") return;
 
     try {
       window.sessionStorage.setItem("twd-auto-translation-started", "1");
