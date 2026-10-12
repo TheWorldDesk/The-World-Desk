@@ -20,6 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const languages: Record<string, string> = {};
   if (cleanPath === "/" || cleanPath === "/latest" || cleanPath.startsWith("/section/")) {
     languages.en = `${siteUrl}/en${cleanPath === "/" ? "" : cleanPath}`;
+    languages["x-default"] = languages.en;
     languages.bn = `${siteUrl}/bn${cleanPath === "/" ? "" : cleanPath}`;
   }
 
