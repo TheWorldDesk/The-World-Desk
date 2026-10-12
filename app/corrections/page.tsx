@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Corrections Policy",
-  description: "How The World Desk should handle reader reports, corrections and material updates.",
+  title: "Corrections Policy & Error Updates",
+  description: "Learn how The World Desk should review reader reports, correct factual errors, explain material changes and distinguish corrections from ordinary updates.",
 };
 
 export default function CorrectionsPage() {
