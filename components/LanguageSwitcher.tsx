@@ -12,6 +12,7 @@ export default function LanguageSwitcher() {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const [locale, setLocale] = useState("en");
+  const isBangla = locale === "bn";
 
   useEffect(() => {
     const first = pathname.split("/")[1];
