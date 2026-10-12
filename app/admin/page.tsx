@@ -19,6 +19,9 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
 
   const [title, setTitle] = useState("");
+  const [bnTitle, setBnTitle] = useState("");
+  const [bnExcerpt, setBnExcerpt] = useState("");
+  const [bnContent, setBnContent] = useState("");
   const [slug, setSlug] = useState("");
   const [category, setCategory] = useState("World");
   const [excerpt, setExcerpt] = useState("");
@@ -95,25 +98,73 @@ export default function AdminPage() {
   async function publishArticle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase || !userId || !profile) return;
+    if (!title.trim() || !content.trim() || !bnTitle.trim() || !bnContent.trim()) {
+      setMessage("Please complete both English and Bangla headlines and story text.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
+    if (!cleanSlug) {
+      setMessage("Please provide an English URL slug using letters, numbers, and hyphens.");
+      setBusy(false);
+      return;
+    }
+    const now = new Date().toISOString();
     const payload = {
       slug: cleanSlug, title: title.trim(), excerpt: excerpt.trim() || null,
-      content: content.trim() || null, category, image_url: imageUrl.trim() || null,
+      content: content.trim(), category, image_url: imageUrl.trim() || null,
       author_name: author.trim() || profile.display_name || "The-World-Desk",
-      language: "en", status,
-      published_at: status === "published" ? new Date().toISOString() : null,
+      language: "en", status: "draft", published_at: null,
     };
     const result = editingId
-      ? await supabase.from("articles").update(payload).eq("id", editingId)
-      : await supabase.from("articles").insert(payload);
-    if (result.error) setMessage("Could not save story: " + result.error.message);
-    else {
-      setMessage(editingId ? "Story updated." : status === "published" ? "Story published." : "Draft saved.");
-      setTitle(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setEditingId(null);
-      await loadEditor(userId);
+      ? await supabase.from("articles").update(payload).eq("id", editingId).select("id").single()
+      : await supabase.from("articles").insert(payload).select("id").single();
+    if (result.error || !result.data?.id) {
+      setMessage("Could not save English story: " + (result.error?.message || "No article ID returned."));
+      setBusy(false);
+      return;
     }
+    const articleId = result.data.id as string;
+    const translation = await supabase.from("article_translations").upsert({
+      article_id: articleId, language_code: "bn",
+      title: bnTitle.trim(), excerpt: bnExcerpt.trim() || null, content: bnContent.trim(),
+      translation_status: "draft", translated_by: email || "editor",
+      reviewed_by: null, updated_at: now,
+    }, { onConflict: "article_id,language_code" });
+    if (translation.error) {
+      setMessage("English draft saved, but Bangla could not be saved: " + translation.error.message + ". Nothing was published.");
+      setBusy(false);
+      await loadEditor(userId);
+      return;
+    }
+    if (status === "published") {
+      const banglaPublish = await supabase.from("article_translations").update({
+        translation_status: "published", reviewed_by: userId, updated_at: new Date().toISOString(),
+      }).eq("article_id", articleId).eq("language_code", "bn");
+      if (banglaPublish.error) {
+        setMessage("Both drafts are saved, but Bangla publication failed: " + banglaPublish.error.message + ". English remains unpublished.");
+        setBusy(false);
+        await loadEditor(userId);
+        return;
+      }
+      const englishPublish = await supabase.from("articles").update({
+        status: "published", published_at: new Date().toISOString(),
+      }).eq("id", articleId);
+      if (englishPublish.error) {
+        await supabase.from("article_translations").update({
+          translation_status: "draft", reviewed_by: null,
+        }).eq("article_id", articleId).eq("language_code", "bn");
+        setMessage("English publication failed: " + englishPublish.error.message + ". Bangla was returned to draft.");
+        setBusy(false);
+        await loadEditor(userId);
+        return;
+      }
+    }
+    setMessage(status === "published" ? "Both English and Bangla versions published." : "Both language drafts saved.");
+    setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent("");
+    setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setEditingId(null);
+    await loadEditor(userId);
     setBusy(false);
   }
 
@@ -216,11 +267,9 @@ export default function AdminPage() {
             <button onClick={signOut} className="border border-black/20 px-4 py-2 text-sm font-bold">Sign out</button>
           </div>
           <form onSubmit={publishArticle} className="mt-8 grid gap-5 border border-black/10 bg-white p-6">
-            <h2 className="text-2xl font-black">{editingId ? "Edit story" : "Write a story"}</h2>
-            {editingId && <button type="button" onClick={() => { setEditingId(null); setTitle(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft"); setMessage("Edit cancelled."); }} className="justify-self-start border border-black/20 px-4 py-2 text-sm font-bold">Cancel editing</button>}
-            <label className="text-sm font-bold">Headline *
-              <input required value={title} onChange={(e) => { setTitle(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-            </label>
+            <h2 className="text-2xl font-black">{editingId ? "Edit bilingual story" : "Write bilingual story"}</h2>
+            <p className="text-sm leading-6 text-neutral-600">Write both versions below. The same image, category, author, and URL are shared. Publishing is attempted only after both language versions have been saved.</p>
+            {editingId && <button type="button" onClick={() => { setEditingId(null); setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft"); setMessage("Edit cancelled."); }} className="justify-self-start border border-black/20 px-4 py-2 text-sm font-bold">Cancel editing</button>}
             <label className="text-sm font-bold">URL slug *
               <input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value={slug} onChange={(e) => setSlug(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
             </label>
@@ -229,12 +278,30 @@ export default function AdminPage() {
                 {["World", "Politics", "Business", "Technology", "Science", "Culture", "Health", "Sports"].map((item) => <option key={item}>{item}</option>)}
               </select>
             </label>
-            <label className="text-sm font-bold">Short summary
-              <textarea rows={3} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-            </label>
-            <label className="text-sm font-bold">Story text
-              <textarea rows={10} value={content} onChange={(e) => setContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-            </label>
+            <fieldset className="grid gap-4 rounded border border-black/10 p-4">
+              <legend className="px-2 font-black">English version</legend>
+              <label className="text-sm font-bold">Headline *
+                <input required value={title} onChange={(e) => { setTitle(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">Short summary
+                <textarea rows={3} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">Story text *
+                <textarea required rows={10} value={content} onChange={(e) => setContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+            </fieldset>
+            <fieldset className="grid gap-4 rounded border border-black/10 p-4">
+              <legend className="px-2 font-black">বাংলা সংস্করণ</legend>
+              <label className="text-sm font-bold">বাংলা শিরোনাম *
+                <input required value={bnTitle} onChange={(e) => setBnTitle(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">সংক্ষিপ্ত বিবরণ
+                <textarea rows={3} value={bnExcerpt} onChange={(e) => setBnExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+              <label className="text-sm font-bold">সংবাদের বিবরণ *
+                <textarea required rows={10} value={bnContent} onChange={(e) => setBnContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
+              </label>
+            </fieldset>
             <label className="text-sm font-bold">Image URL (optional)
               <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
             </label>
@@ -254,7 +321,7 @@ export default function AdminPage() {
               {articles.length ? articles.map((article) => (
                 <div key={article.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div><p className="font-bold">{article.title}</p><p className="mt-1 text-xs text-neutral-500">/{article.slug} · {article.category}</p></div>
-                  <div className="flex items-center gap-3"><span className="text-xs font-black uppercase tracking-widest">{article.status}</span><button type="button" onClick={() => { setEditingId(article.id); setTitle(article.title); setSlug(article.slug); setCategory(article.category); setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || ""); setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft"); setMessage("Editing selected story."); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="border border-black/20 px-3 py-2 text-xs font-bold">Edit</button><button type="button" disabled={busy || article.status !== "published"} onClick={() => void autoTranslateArticle(article.id)} className="border border-black/20 px-3 py-2 text-xs font-bold disabled:opacity-50">Auto-translate 32 languages</button></div>
+                  <div className="flex items-center gap-3"><span className="text-xs font-black uppercase tracking-widest">{article.status}</span><button type="button" onClick={() => { setEditingId(article.id); setTitle(article.title); setBnTitle(""); setBnExcerpt(""); setBnContent(""); void supabase?.from("article_translations").select("title,excerpt,content").eq("article_id", article.id).eq("language_code", "bn").maybeSingle().then(({ data }) => { if (data) { setBnTitle(data.title || ""); setBnExcerpt(data.excerpt || ""); setBnContent(data.content || ""); } }); setSlug(article.slug); setCategory(article.category); setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || ""); setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft"); setMessage("Editing selected story."); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="border border-black/20 px-3 py-2 text-xs font-bold">Edit</button><button type="button" disabled={busy || article.status !== "published"} onClick={() => void autoTranslateArticle(article.id)} className="border border-black/20 px-3 py-2 text-xs font-bold disabled:opacity-50">Auto-translate 32 languages</button></div>
                 </div>
               )) : <p className="py-5 text-sm text-neutral-500">No stories yet.</p>}
             </div>
