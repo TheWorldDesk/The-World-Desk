@@ -1,6 +1,6 @@
 export const SUPPORTED_LOCALES = [
   "en", "bn", "ar", "hi", "es", "fr", "zh-CN", "zh-TW", "pt", "ru", "ja",
-  "de", "it", "id", "tr", "ko", "vi", "ur", "sw", "fa", "th",
+  "de", "it", "id", "tr", "ko", "vi", "ur", "sw", "fa", "th", "tl",
   "nl", "pl", "uk", "ms", "ta", "te", "ml", "mr", "gu", "pa", "ne",
 ] as const;
 
@@ -43,7 +43,7 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   fr: "Français", "zh-CN": "简体中文", "zh-TW": "繁體中文", pt: "Português", ru: "Русский",
   ja: "日本語", de: "Deutsch", it: "Italiano", id: "Bahasa Indonesia",
   tr: "Türkçe", ko: "한국어", vi: "Tiếng Việt", ur: "اردو", sw: "Kiswahili",
-  fa: "فارسی", th: "ไทย", nl: "Nederlands", pl: "Polski", uk: "Українська",
+  fa: "فارسی", th: "ไทย", tl: "Filipino", nl: "Nederlands", pl: "Polski", uk: "Українська",
   ms: "Bahasa Melayu", ta: "தமிழ்", te: "తెలుగు", ml: "മലയാളം", mr: "मराठी", gu: "ગુજરાતી",
   pa: "ਪੰਜਾਬੀ", ne: "नेपाली",
 };
