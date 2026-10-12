@@ -36,7 +36,8 @@ export default function LanguageSwitcher() {
 
     const { pathname, search } = window.location;
     if (
-      pathname.startsWith("/admin") ||\n      /^\\/[^/]+\\/admin(?:\\/|$)/.test(pathname) ||
+      pathname.startsWith("/admin") ||
+      /^\/[^/]+\/admin(?:\/|$)/.test(pathname) ||
       pathname.startsWith("/api/") ||
       pathname.startsWith("/_next/") ||
       pathname === "/robots.txt" ||
