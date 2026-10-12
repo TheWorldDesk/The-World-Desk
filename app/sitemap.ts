@@ -22,9 +22,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     urls.push({ url: languages.bn, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
   }
   for (const page of staticPages) {
-    const languages = { en: `${baseUrl}/en/${page}`, bn: `${baseUrl}/bn/${page}` };
-    urls.push({ url: languages.en, changeFrequency: "monthly", priority: 0.3, alternates: { languages } });
-    urls.push({ url: languages.bn, changeFrequency: "monthly", priority: 0.3, alternates: { languages } });
+    // These policy pages are currently authored in English only; do not claim an untranslated Bengali alternate.
+    urls.push({ url: `${baseUrl}/en/${page}`, changeFrequency: "monthly", priority: 0.3 });
   }
 
   if (!supabase) return urls;
