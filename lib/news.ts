@@ -77,10 +77,10 @@ const demoStories: Article[] = [
   author: "The World Desk Demo",
 }));
 
-function getRequestedLocale(localeOverride?: string): string {
+async function getRequestedLocale(localeOverride?: string): Promise<string> {
   if (localeOverride && isLocale(localeOverride)) return localeOverride;
   try {
-    const value = headers().get("x-twd-locale");
+    const value = (await headers()).get("x-twd-locale");
     return value && isLocale(value) ? value : DEFAULT_LOCALE;
   } catch {
     return DEFAULT_LOCALE;
@@ -88,7 +88,7 @@ function getRequestedLocale(localeOverride?: string): string {
 }
 
 export async function getPublishedArticles(localeOverride?: string): Promise<Article[]> {
-  const locale = getRequestedLocale(localeOverride);
+  const locale = await getRequestedLocale(localeOverride);
   if (!supabase) return demoStories.map((article) => ({ ...article, requestedLocale: locale }));
 
   const { data, error } = await supabase
