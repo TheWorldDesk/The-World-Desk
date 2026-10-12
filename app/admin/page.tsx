@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { LOCALE_LABELS, SUPPORTED_LOCALES } from "@/lib/i18n";
 
 type Profile = { display_name: string | null; role: "editor" | "admin" };
 type Article = { id: string; title: string; slug: string; category: string; status: string; excerpt: string | null; content: string | null; image_url: string | null; author_name: string | null; created_at: string };
@@ -152,7 +153,7 @@ export default function AdminPage() {
       setBusy(false);
       return;
     }
-    const languages = ["bn","ar","hi","es","fr","zh-CN","zh-TW","pt","ru","ja","de","it","id","tr","ko","vi","ur","sw","fa","th","nl","pl","uk","ms","ta","te","ml","mr","gu","pa","ne"];
+    const languages = SUPPORTED_LOCALES.filter((language) => language !== "en");
     let saved = 0;
     const failures: string[] = [];
     for (const language of languages) {
@@ -276,9 +277,7 @@ export default function AdminPage() {
               </label>
               <label className="text-sm font-bold">Target language *
                 <select value={translationLanguage} onChange={(e) => setTranslationLanguage(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
-                  {[
-                    ["bn","বাংলা"],["ar","العربية"],["fa","فارسی"],["ur","اردو"],["hi","हिन्दी"],["es","Español"],["fr","Français"],["zh-CN","简体中文"],["zh-TW","繁體中文"],["pt","Português"],["ru","Русский"],["ja","日本語"],["de","Deutsch"],["it","Italiano"],["id","Bahasa Indonesia"],["tr","Türkçe"],["ko","한국어"],["vi","Tiếng Việt"],["sw","Kiswahili"],["th","ไทย"],["nl","Nederlands"],["pl","Polski"],["uk","Українська"],["ms","Bahasa Melayu"],["ta","தமிழ்"],["te","తెలుగు"],["ml","മലയാളം"],["mr","मराठी"],["gu","ગુજરાતી"],["pa","ਪੰਜਾਬੀ"],["ne","नेपाली"]
-                  ].map(([code, label]) => <option key={code} value={code}>{label} ({code})</option>)}
+                  {SUPPORTED_LOCALES.filter((code) => code !== "en").map((code) => <option key={code} value={code}>{LOCALE_LABELS[code]} ({code})</option>)}
                 </select>
               </label>
               <label className="text-sm font-bold">Translated headline *
