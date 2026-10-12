@@ -32,5 +32,31 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     });
   }
+
+  const { data: translations, error: translationsError } = await supabase
+    .from("article_translations")
+    .select("language_code, articles!inner(slug,updated_at,published_at,status)")
+    .eq("translation_status", "published")
+    .eq("articles.status", "published")
+    .limit(5000);
+
+  if (translationsError) {
+    console.error("Unable to build translated article sitemap:", translationsError.message);
+  } else {
+    for (const row of translations ?? []) {
+      const joined = row.articles as unknown as
+        | { slug: string; updated_at: string | null; published_at: string | null; status: string }
+        | { slug: string; updated_at: string | null; published_at: string | null; status: string }[]
+        | null;
+      const article = Array.isArray(joined) ? joined[0] : joined;
+      if (!article || article.status !== "published") continue;
+      urls.push({
+        url: `${baseUrl}/${row.language_code}/article/${article.slug}`,
+        lastModified: article.updated_at || article.published_at || new Date(),
+        changeFrequency: "weekly",
+        priority: 0.7,
+      });
+    }
+  }
   return urls;
 }
