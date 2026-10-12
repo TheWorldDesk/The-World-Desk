@@ -147,3 +147,36 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
     };
   });
 }
+
+
+export async function getArticleLanguageAlternates(slug: string): Promise<Record<string, string> | undefined> {
+  if (!supabase) return undefined;
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app").replace(/\/$/, "");
+  const { data: article, error: articleError } = await supabase
+    .from("articles")
+    .select("id,slug")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .eq("language", "en")
+    .maybeSingle();
+
+  if (articleError || !article) return undefined;
+  const languages: Record<string, string> = {
+    en: `${baseUrl}/en/article/${article.slug}`,
+  };
+  const { data: translations, error: translationsError } = await supabase
+    .from("article_translations")
+    .select("language_code")
+    .eq("article_id", article.id)
+    .eq("translation_status", "published");
+
+  if (translationsError) {
+    console.error("Unable to load article language alternates:", translationsError.message);
+    return languages;
+  }
+
+  for (const translation of translations ?? []) {
+    languages[translation.language_code] = `${baseUrl}/${translation.language_code}/article/${article.slug}`;
+  }
+  return languages;
+}
