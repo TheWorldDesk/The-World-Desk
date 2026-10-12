@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
-import { SUPPORTED_LOCALES, isLocale } from "@/lib/i18n";
+import { createClient } from "@supabase/supabase-js";
+import { isLocale, SUPPORTED_LOCALES } from "@/lib/i18n";
 
 export const runtime = "nodejs";
 
 type TranslationRequest = {
+  articleId?: string;
   title?: string;
   excerpt?: string;
   content?: string;
   targetLanguage?: string;
+  save?: boolean;
 };
 
 async function translateText(text: string, targetLanguage: string, apiKey: string) {
@@ -22,8 +25,7 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
     },
   );
   if (!response.ok) {
-    const detail = await response.text();
-    console.error("Translation provider error:", response.status, detail.slice(0, 500));
+    console.error("Translation provider error:", response.status, (await response.text()).slice(0, 500));
     throw new Error("Translation provider request failed");
   }
   const payload = await response.json();
@@ -34,29 +36,18 @@ async function translateText(text: string, targetLanguage: string, apiKey: strin
 
 export async function POST(request: Request) {
   const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Automatic translation is not configured. Add GOOGLE_TRANSLATE_API_KEY to the server environment." },
-      { status: 503 },
-    );
-  }
+  if (!apiKey) return NextResponse.json({ error: "Automatic translation is not configured. Add GOOGLE_TRANSLATE_API_KEY to the server environment." }, { status: 503 });
 
   let body: TranslationRequest;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON request." }, { status: 400 });
-  }
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ error: "Invalid JSON request." }, { status: 400 }); }
 
   const targetLanguage = body.targetLanguage;
   if (!targetLanguage || !isLocale(targetLanguage) || targetLanguage === "en") {
     return NextResponse.json({ error: "Choose a supported non-English target language." }, { status: 400 });
   }
-
   const fields = [body.title, body.excerpt, body.content].filter((value): value is string => typeof value === "string");
-  if (!fields.length || fields.some((value) => value.length > 100000)) {
-    return NextResponse.json({ error: "Provide story text, with each field no longer than 100,000 characters." }, { status: 400 });
-  }
+  if (!fields.length || fields.some((value) => value.length > 100000)) return NextResponse.json({ error: "Provide story text, with each field no longer than 100,000 characters." }, { status: 400 });
 
   try {
     const [title, excerpt, content] = await Promise.all([
@@ -64,14 +55,30 @@ export async function POST(request: Request) {
       translateText(body.excerpt || "", targetLanguage, apiKey),
       translateText(body.content || "", targetLanguage, apiKey),
     ]);
-    return NextResponse.json({
-      targetLanguage,
-      title,
-      excerpt,
-      content,
-      provider: "Google Cloud Translation",
-      supportedLanguages: SUPPORTED_LOCALES.length,
-    });
+
+    if (body.save) {
+      const authHeader = request.headers.get("authorization") || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!token || !supabaseUrl || !supabaseKey || !body.articleId) {
+        return NextResponse.json({ error: "Saving requires an authenticated editor session and articleId." }, { status: 401 });
+      }
+      const client = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
+      const { data: userData, error: userError } = await client.auth.getUser(token);
+      if (userError || !userData.user) return NextResponse.json({ error: "Editor authentication failed." }, { status: 401 });
+      const { data: profile } = await client.from("editor_profiles").select("role").eq("user_id", userData.user.id).maybeSingle();
+      if (!profile || !["admin", "editor"].includes(profile.role)) return NextResponse.json({ error: "Editor access required." }, { status: 403 });
+      const { data: article, error: articleError } = await client.from("articles").select("id").eq("id", body.articleId).maybeSingle();
+      if (articleError || !article) return NextResponse.json({ error: "Source article not found or access denied." }, { status: 404 });
+      const { error: saveError } = await client.from("article_translations").upsert({
+        article_id: body.articleId, language_code: targetLanguage, title, excerpt: excerpt || null, content,
+        translation_status: "draft", translated_by: "google-cloud-translation", reviewed_by: null, updated_at: new Date().toISOString(),
+      }, { onConflict: "article_id,language_code" });
+      if (saveError) return NextResponse.json({ error: "Translation was generated but could not be saved. Check translation table permissions and unique constraint." }, { status: 500 });
+    }
+
+    return NextResponse.json({ articleId: body.articleId || null, targetLanguage, title, excerpt, content, saved: Boolean(body.save), provider: "Google Cloud Translation", supportedLanguages: SUPPORTED_LOCALES.length });
   } catch {
     return NextResponse.json({ error: "Translation failed. Check the translation API configuration and try again." }, { status: 502 });
   }
