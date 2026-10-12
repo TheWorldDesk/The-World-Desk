@@ -12,7 +12,6 @@ export const metadata: Metadata = {
   description:
     "Global news, politics, business, technology, science, climate and culture. Independent journalism and global perspectives.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app"),
-  alternates: { languages: { "x-default": "/", en: "/en", bn: "/bn", ar: "/ar" } },
   openGraph: {
     type: "website",
     siteName: "The World Desk",
