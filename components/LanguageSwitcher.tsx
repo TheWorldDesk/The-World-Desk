@@ -16,27 +16,43 @@ const supportedLanguages = new Set([
 ]);
 
 function normalizeLanguage(language: string): string | null {
-  const base = language.trim().toLowerCase().split("-")[0];
+  const normalized = language.trim().toLowerCase();
+  const base = normalized.split("-")[0];
+
   if (!base || base === "en") return null;
   if (base === "zh") {
-    return language.toLowerCase().includes("tw") || language.toLowerCase().includes("hk")
+    return normalized.includes("tw") || normalized.includes("hk") || normalized.includes("hant")
       ? "zh-TW"
       : "zh-CN";
   }
+
   return supportedLanguages.has(base) ? base : null;
 }
 
 export default function LanguageSwitcher() {
   useEffect(() => {
-    // Google Translate's translated-page proxy must never be redirected again.
+    // This is a best-effort browser translation fallback, not native localization.
+    // Keep it away from editor routes, APIs and framework/static assets.
     if (window.location.hostname.includes("translate.google")) return;
 
-    // Respect a user's explicit choice for this browser session.
+    const { pathname, search } = window.location;
+    if (
+      pathname.startsWith("/admin") ||
+      pathname.startsWith("/api/") ||
+      pathname.startsWith("/_next/") ||
+      pathname === "/robots.txt" ||
+      pathname === "/sitemap.xml" ||
+      /\.(?:png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|xml)$/i.test(pathname)
+    ) {
+      return;
+    }
+
+    // Respect an explicit English preference for the current browser session.
     try {
       if (window.sessionStorage.getItem("twd-language-choice") === "en") return;
       if (window.sessionStorage.getItem("twd-auto-translation-started") === "1") return;
     } catch {
-      // Continue with browser-language detection if storage is unavailable.
+      // Storage may be disabled; language detection can still proceed.
     }
 
     const preferredLanguages =
@@ -49,21 +65,21 @@ export default function LanguageSwitcher() {
       targetLanguage = normalizeLanguage(language);
       if (targetLanguage) break;
     }
-
     if (!targetLanguage) return;
 
     try {
       window.sessionStorage.setItem("twd-auto-translation-started", "1");
     } catch {
-      // The redirect still works when storage is unavailable.
+      // The external translation redirect still works without storage.
     }
 
-    const currentUrl = window.location.href;
+    const currentUrl = window.location.origin + pathname + search;
     const translateUrl =
       "https://translate.google.com/translate?sl=auto&tl=" +
       encodeURIComponent(targetLanguage) +
       "&u=" +
       encodeURIComponent(currentUrl);
+
     window.location.replace(translateUrl);
   }, []);
 
