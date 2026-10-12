@@ -7,12 +7,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app").replace(/\/$/, "");
   const homeAlternates = { en: `${baseUrl}/en`, bn: `${baseUrl}/bn` };
   const latestAlternates = { en: `${baseUrl}/en/latest`, bn: `${baseUrl}/bn/latest` };
+  const sections = ["world", "africa", "asia", "europe", "middle-east", "north-america", "latin-america", "earth", "politics", "business", "technology", "science", "climate", "health", "sports", "culture", "environment", "education", "travel", "agriculture"];
+  const staticPages = ["about", "contact", "editorial-standards", "corrections", "privacy", "terms"];
   const urls: MetadataRoute.Sitemap = [
     { url: homeAlternates.en, changeFrequency: "hourly", priority: 1, alternates: { languages: homeAlternates } },
     { url: homeAlternates.bn, changeFrequency: "hourly", priority: 1, alternates: { languages: homeAlternates } },
     { url: latestAlternates.en, changeFrequency: "hourly", priority: 0.8, alternates: { languages: latestAlternates } },
     { url: latestAlternates.bn, changeFrequency: "hourly", priority: 0.8, alternates: { languages: latestAlternates } },
   ];
+
+  for (const section of sections) {
+    const languages = { en: `${baseUrl}/en/section/${section}`, bn: `${baseUrl}/bn/section/${section}` };
+    urls.push({ url: languages.en, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
+    urls.push({ url: languages.bn, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
+  }
+  for (const page of staticPages) {
+    const languages = { en: `${baseUrl}/en/${page}`, bn: `${baseUrl}/bn/${page}` };
+    urls.push({ url: languages.en, changeFrequency: "monthly", priority: 0.3, alternates: { languages } });
+    urls.push({ url: languages.bn, changeFrequency: "monthly", priority: 0.3, alternates: { languages } });
+  }
 
   if (!supabase) return urls;
 
