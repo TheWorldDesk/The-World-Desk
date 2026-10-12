@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+// Next.js 15+ exposes request headers asynchronously.
 import { supabase } from "@/lib/supabase";
 import { DEFAULT_LOCALE, isLocale, LOCALE_LABELS } from "@/lib/i18n";
 
