@@ -225,11 +225,10 @@ export default function AdminPage() {
             <form onSubmit={saveTranslation} className="mt-5 grid gap-4">
               <label className="text-sm font-bold">Source story *
                 <select required value={translationArticleId} onChange={(e) => {
-                  const selected = articles.find((item) => item.id === e.target.value);
                   setTranslationArticleId(e.target.value);
-                  if (selected && !translationTitle) setTranslationTitle(selected.title);
-                  if (selected && !translationExcerpt) setTranslationExcerpt(selected.excerpt || "");
-                  if (selected && !translationContent) setTranslationContent(selected.content || "");
+                  setTranslationTitle("");
+                  setTranslationExcerpt("");
+                  setTranslationContent("");
                 }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
                   <option value="">Choose a story</option>
                   {articles.map((item) => <option key={item.id} value={item.id}>{item.title} ({item.status})</option>)}
