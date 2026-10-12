@@ -131,6 +131,7 @@ export async function getArticleLanguageAlternates(slug: string): Promise<Record
   if (articleError || !article) return undefined;
   const languages: Record<string, string> = {
     en: `${baseUrl}/en/article/${article.slug}`,
+    "x-default": `${baseUrl}/en/article/${article.slug}`,
   };
   const { data: translations, error: translationsError } = await supabase
     .from("article_translations")
