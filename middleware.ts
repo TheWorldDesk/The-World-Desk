@@ -46,6 +46,7 @@ export function middleware(request: NextRequest) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-twd-locale", locale);
     requestHeaders.set("x-twd-direction", RTL_LOCALES.has(locale) ? "rtl" : "ltr");
+    requestHeaders.set("x-twd-pathname", pathname);
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
@@ -73,6 +74,7 @@ export function middleware(request: NextRequest) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-twd-locale", locale);
     requestHeaders.set("x-twd-direction", RTL_LOCALES.has(locale) ? "rtl" : "ltr");
+    requestHeaders.set("x-twd-pathname", pathname);
     const response = NextResponse.rewrite(destination, { request: { headers: requestHeaders } });
     response.cookies.set(LOCALE_COOKIE, locale, {
       path: "/",
