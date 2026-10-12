@@ -5,8 +5,8 @@ export const revalidate = 300;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://the-world-desk.vercel.app").replace(/\/$/, "");
-  const homeAlternates = { en: `${baseUrl}/en`, bn: `${baseUrl}/bn` };
-  const latestAlternates = { en: `${baseUrl}/en/latest`, bn: `${baseUrl}/bn/latest` };
+  const homeAlternates = { en: `${baseUrl}/en`, bn: `${baseUrl}/bn`, "x-default": `${baseUrl}/en` };
+  const latestAlternates = { en: `${baseUrl}/en/latest`, bn: `${baseUrl}/bn/latest`, "x-default": `${baseUrl}/en/latest` };
   const sections = ["world", "africa", "asia", "europe", "middle-east", "north-america", "latin-america", "earth", "politics", "business", "technology", "science", "climate", "health", "sports", "culture", "environment", "education", "travel", "agriculture"];
   const staticPages = ["about", "contact", "editorial-standards", "corrections", "privacy", "terms"];
   const urls: MetadataRoute.Sitemap = [
@@ -17,7 +17,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   for (const section of sections) {
-    const languages = { en: `${baseUrl}/en/section/${section}`, bn: `${baseUrl}/bn/section/${section}` };
+    const languages = { en: `${baseUrl}/en/section/${section}`, bn: `${baseUrl}/bn/section/${section}`, "x-default": `${baseUrl}/en/section/${section}` };
     urls.push({ url: languages.en, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
     urls.push({ url: languages.bn, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
   }
@@ -64,13 +64,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (!article || article.status !== "published") continue;
       const languages = languagesByArticle.get(article.id) ?? {};
       languages.en = `${baseUrl}/en/article/${article.slug}`;
+      languages["x-default"] = languages.en;
       languages[row.language_code] = `${baseUrl}/${row.language_code}/article/${article.slug}`;
       languagesByArticle.set(article.id, languages);
     }
   }
 
   for (const article of articleRows) {
-    const languages = languagesByArticle.get(article.id) ?? { en: `${baseUrl}/en/article/${article.slug}` };
+    const languages = languagesByArticle.get(article.id) ?? { en: `${baseUrl}/en/article/${article.slug}`, "x-default": `${baseUrl}/en/article/${article.slug}` };
     urls.push({
       url: `${baseUrl}/en/article/${article.slug}`,
       lastModified: article.updated_at || article.published_at || undefined,
@@ -93,7 +94,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         lastModified: article.updated_at || article.published_at || undefined,
         changeFrequency: "weekly",
         priority: 0.7,
-        alternates: { languages: languagesByArticle.get(article.id) ?? { en: `${baseUrl}/en/article/${article.slug}` } },
+        alternates: { languages: languagesByArticle.get(article.id) ?? { en: `${baseUrl}/en/article/${article.slug}`, "x-default": `${baseUrl}/en/article/${article.slug}` } },
       });
     }
   }
