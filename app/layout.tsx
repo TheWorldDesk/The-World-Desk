@@ -20,8 +20,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const requestHeaders = headers();
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const requestHeaders = await headers();
   const requestedLocale = requestHeaders.get("x-twd-locale") || DEFAULT_LOCALE;
   const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
   const direction = RTL_LOCALES.has(locale) ? "rtl" : "ltr";
