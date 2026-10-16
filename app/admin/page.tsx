@@ -15,6 +15,7 @@ type Translation = {
   article_id: string; language_code: string; title: string; excerpt: string | null;
   content: string | null; translation_status: string;
 };
+type Revision = { id: number; article_id: string; snapshot: Record<string, unknown>; changed_at: string; changed_by: string | null };
 type Tab = "dashboard" | "articles" | "write" | "translations" | "sections" | "seo" | "settings";
 const CATEGORIES = ["World", "Politics", "Business", "Technology", "Science", "Health", "Sports", "Culture", "Climate", "Africa", "Asia", "Europe", "Middle East", "North America", "Latin America", "Earth"];
 const inputClass = "mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
