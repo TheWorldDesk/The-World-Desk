@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./public-theme.css";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import PageViewTracker from "@/components/PageViewTracker";
 import { DEFAULT_LOCALE, RTL_LOCALES, isLocale } from "@/lib/i18n";
