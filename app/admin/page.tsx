@@ -9,13 +9,15 @@ type Profile = { display_name: string | null; role: "editor" | "admin" };
 type Article = {
   id: string; title: string; slug: string; category: string; status: string;
   excerpt: string | null; content: string | null; image_url: string | null;
-  author_name: string | null; created_at: string; published_at?: string | null;
+  author_name: string | null; created_at: string; published_at?: string | null; scheduled_at?: string | null;
 };
 type Translation = {
   article_id: string; language_code: string; title: string; excerpt: string | null;
   content: string | null; translation_status: string;
 };
-type Tab = "dashboard" | "articles" | "write" | "translations" | "sections" | "seo";
+type Revision = { id: number; article_id: string; snapshot: Record<string, unknown>; changed_at: string; changed_by: string | null };
+type EditorProfile = { user_id: string; display_name: string | null; role: "admin" | "editor"; created_at?: string };
+type Tab = "dashboard" | "articles" | "write" | "translations" | "sections" | "seo" | "settings";
 const CATEGORIES = ["World", "Politics", "Business", "Technology", "Science", "Health", "Sports", "Culture", "Climate", "Africa", "Asia", "Europe", "Middle East", "North America", "Latin America", "Earth"];
 const inputClass = "mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const cardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
@@ -35,6 +37,18 @@ export default function AdminPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [breakingEnabled, setBreakingEnabled] = useState(false);
+  const [breakingEn, setBreakingEn] = useState("");
+  const [breakingBn, setBreakingBn] = useState("");
+  const [sectionOrder, setSectionOrder] = useState<string[]>(["World", "Politics", "Business", "Technology", "Science", "Health", "Sports", "Culture"]);
+  const [featuredIds, setFeaturedIds] = useState<string[]>([]);
+  const [mediaItems, setMediaItems] = useState<{name:string; url:string; path:string}[]>([]);
+  const [editorProfiles, setEditorProfiles] = useState<EditorProfile[]>([]);
+  const [profileUserId, setProfileUserId] = useState("");
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [profileRole, setProfileRole] = useState<"admin" | "editor">("editor");
+  const [revisionRows, setRevisionRows] = useState<Revision[]>([]);
+  const [revisionArticleId, setRevisionArticleId] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [bnTitle, setBnTitle] = useState("");
@@ -46,7 +60,8 @@ export default function AdminPage() {
   const [content, setContent] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [author, setAuthor] = useState("");
-  const [status, setStatus] = useState<"draft" | "published">("draft");
+  const [status, setStatus] = useState<"draft" | "published" | "scheduled">("draft");
+  const [scheduledDate, setScheduledDate] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [translationArticleId, setTranslationArticleId] = useState("");
@@ -69,7 +84,7 @@ export default function AdminPage() {
     setAuthor(editor.display_name || "");
     const [articleResult, translationResult] = await Promise.all([
       supabase.from("articles")
-        .select("id,title,slug,category,status,excerpt,content,image_url,author_name,created_at,published_at")
+        .select("id,title,slug,category,status,excerpt,content,image_url,author_name,created_at,published_at,scheduled_at")
         .order("created_at", { ascending: false }).limit(200),
       supabase.from("article_translations")
         .select("article_id,language_code,title,excerpt,content,translation_status")
@@ -81,6 +96,24 @@ export default function AdminPage() {
       setTranslations([]);
       setMessage((old) => old || "অনুবাদের তালিকা লোড করা যায়নি: " + translationResult.error.message);
     } else setTranslations((translationResult.data ?? []) as Translation[]);
+    const mediaBucket = supabase.storage.from("newsroom-media");
+    const { data: mediaFolders } = await mediaBucket.list(id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+    setMediaItems((mediaFolders ?? []).filter((item) => item.name && item.id).map((item) => { const path = `${id}/${item.name}`; return { name: item.name, path, url: mediaBucket.getPublicUrl(path).data.publicUrl }; }));
+    if (editor?.role === "admin") {
+      const { data: profilesData } = await supabase.from("editor_profiles").select("user_id,display_name,role,created_at").order("created_at", { ascending: true });
+      setEditorProfiles((profilesData ?? []) as EditorProfile[]);
+    } else setEditorProfiles([]);
+    const { data: settingsRow, error: settingsError } = await supabase.from("site_settings").select("settings").eq("id", "global").maybeSingle();
+    const { data: revisionData } = await supabase.from("article_revisions").select("id,article_id,snapshot,changed_at,changed_by").order("changed_at", { ascending: false }).limit(300);
+    setRevisionRows((revisionData ?? []) as Revision[]);
+    if (!settingsError && settingsRow?.settings) {
+      const settings = settingsRow.settings as { breaking_news_enabled?: boolean; breaking_news_text_en?: string; breaking_news_text_bn?: string; homepage_section_order?: string[]; homepage_featured_article_ids?: string[] };
+      setBreakingEnabled(Boolean(settings.breaking_news_enabled));
+      setBreakingEn(settings.breaking_news_text_en || "");
+      setBreakingBn(settings.breaking_news_text_bn || "");
+      setSectionOrder(settings.homepage_section_order?.length ? settings.homepage_section_order : ["World", "Politics", "Business", "Technology", "Science", "Health", "Sports", "Culture"]);
+      setFeaturedIds(settings.homepage_featured_article_ids || []);
+    }
   }, []);
 
   useEffect(() => {
@@ -108,7 +141,7 @@ export default function AdminPage() {
   const filteredArticles = useMemo(() => articles.filter((article) => {
     const matchesQuery = !query || [article.title, article.slug, article.author_name || "", article.category]
       .some((value) => value.toLowerCase().includes(query.toLowerCase()));
-    const matchesStatus = statusFilter === "all" || article.status === statusFilter;
+    const matchesStatus = statusFilter === "all" || (statusFilter === "scheduled" ? article.status === "draft" && Boolean(article.scheduled_at) : statusFilter === "draft" ? article.status === "draft" && !article.scheduled_at : article.status === statusFilter);
     const matchesCategory = categoryFilter === "all" || article.category === categoryFilter;
     return matchesQuery && matchesStatus && matchesCategory;
   }), [articles, query, statusFilter, categoryFilter]);
@@ -130,14 +163,14 @@ export default function AdminPage() {
   function resetEditor() {
     setEditingId(null); setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent("");
     setSlug(""); setCategory("World"); setExcerpt(""); setContent(""); setImageUrl("");
-    setStatus("draft"); setTab("write");
+    setStatus("draft"); setScheduledDate(""); setTab("write");
   }
 
   async function startEditing(article: Article) {
     if (!supabase) return;
     setEditingId(article.id); setTitle(article.title); setSlug(article.slug); setCategory(article.category);
     setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || "");
-    setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft");
+    setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : article.scheduled_at ? "scheduled" : "draft"); setScheduledDate(article.scheduled_at ? new Date(Date.parse(article.scheduled_at) - new Date(article.scheduled_at).getTimezoneOffset() * 60000).toISOString().slice(0,16) : "");
     const { data } = await supabase.from("article_translations")
       .select("title,excerpt,content").eq("article_id", article.id).eq("language_code", "bn").maybeSingle();
     setBnTitle(data?.title || ""); setBnExcerpt(data?.excerpt || ""); setBnContent(data?.content || "");
@@ -153,12 +186,14 @@ export default function AdminPage() {
     }
     const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").replace(/-+/g, "-");
     if (!cleanSlug) { setMessage("ইংরেজি অক্ষর, সংখ্যা ও হাইফেন দিয়ে URL slug দাও।"); return; }
+    if (status === "scheduled" && (!scheduledDate || new Date(scheduledDate).getTime() <= Date.now())) { setMessage("Scheduled publishing-এর জন্য ভবিষ্যতের একটি তারিখ ও সময় বেছে নাও।"); return; }
     setBusy(true); setMessage("");
     const now = new Date().toISOString();
     const payload = {
       slug: cleanSlug, title: title.trim(), excerpt: excerpt.trim() || null, content: content.trim(),
       category, image_url: imageUrl.trim() || null, author_name: author.trim() || profile.display_name || "The World Desk",
       language: "en", status: "draft", published_at: null,
+      scheduled_at: status === "scheduled" && scheduledDate ? new Date(scheduledDate).toISOString() : null,
     };
     const result = editingId
       ? await supabase.from("articles").update(payload).eq("id", editingId).select("id").single()
@@ -195,9 +230,9 @@ export default function AdminPage() {
         await loadEditor(userId); setBusy(false); return;
       }
     }
-    setMessage(status === "published" ? "ইংরেজি ও বাংলা—দুই সংস্করণ প্রকাশিত হয়েছে।" : "দুই ভাষার Draft সংরক্ষিত হয়েছে।");
+    setMessage(status === "published" ? "ইংরেজি ও বাংলা—দুই সংস্করণ প্রকাশিত হয়েছে।" : status === "scheduled" ? "খবরটি নির্ধারিত সময়ে প্রকাশের জন্য Schedule করা হয়েছে।" : "দুই ভাষার Draft সংরক্ষিত হয়েছে।");
     setEditingId(null); setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent(""); setSlug("");
-    setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft");
+    setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft"); setScheduledDate("");
     await loadEditor(userId); setBusy(false); setTab("articles");
   }
 
@@ -205,11 +240,11 @@ export default function AdminPage() {
     if (!supabase || !userId) return;
     setBusy(true); setMessage("");
     if (article.status === "published") {
-      const { error } = await supabase.from("articles").update({ status: "draft", published_at: null }).eq("id", article.id);
+      const { error } = await supabase.from("articles").update({ status: "draft", published_at: null, scheduled_at: null }).eq("id", article.id);
       if (error) setMessage("Unpublish ব্যর্থ: " + error.message);
       else setMessage("খবরটি Draft-এ ফিরিয়ে নেওয়া হয়েছে।");
     } else {
-      const { error } = await supabase.from("articles").update({ status: "published", published_at: new Date().toISOString() }).eq("id", article.id);
+      const { error } = await supabase.from("articles").update({ status: "published", published_at: new Date().toISOString(), scheduled_at: null }).eq("id", article.id);
       if (error) setMessage("প্রকাশ ব্যর্থ: " + error.message);
       else setMessage("ইংরেজি খবর প্রকাশিত হয়েছে। বাংলা অনুবাদ আলাদাভাবে যাচাই করো।");
     }
@@ -258,9 +293,72 @@ export default function AdminPage() {
     await loadEditor(userId); setBusy(false);
   }
 
+  async function saveSiteSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !userId || profile?.role !== "admin") { setMessage("Homepage settings পরিবর্তনের জন্য admin role প্রয়োজন।"); return; }
+    setBusy(true);
+    const settings = { breaking_news_enabled: breakingEnabled, breaking_news_text_en: breakingEn.trim(), breaking_news_text_bn: breakingBn.trim(), homepage_section_order: sectionOrder, homepage_featured_article_ids: featuredIds };
+    const { error } = await supabase.from("site_settings").upsert({ id: "global", settings, updated_at: new Date().toISOString(), updated_by: userId }, { onConflict: "id" });
+    setMessage(error ? "Settings সংরক্ষণ হয়নি: " + error.message : "Homepage settings database-এ সংরক্ষিত হয়েছে। Public homepage-এ প্রয়োগ করতে homepage integration-ও থাকতে হবে।");
+    setBusy(false);
+  }
+
+  async function uploadMedia(file: File | null) {
+    if (!supabase || !userId || !profile || !file) return;
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) { setMessage("শুধু image file (সর্বোচ্চ 10 MB) আপলোড করা যাবে।"); return; }
+    setBusy(true); setMessage("ছবি আপলোড হচ্ছে…");
+    const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+    const path = `${userId}/${Date.now()}-${safeName}`;
+    const { error } = await supabase.storage.from("newsroom-media").upload(path, file, { cacheControl: "31536000", upsert: false, contentType: file.type });
+    if (error) { setMessage("Upload ব্যর্থ: " + error.message + "। Database migration এবং Storage policy প্রয়োগ হয়েছে কি না যাচাই করো।"); setBusy(false); return; }
+    const { data } = supabase.storage.from("newsroom-media").getPublicUrl(path);
+    setImageUrl(data.publicUrl);
+    setMediaItems((items) => [{ name: file.name, path, url: data.publicUrl }, ...items]);
+    setMessage("ছবি আপলোড হয়েছে এবং Featured image URL-এ বসানো হয়েছে। Article save করতে হবে।");
+    setBusy(false);
+  }
+
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
     setUserId(null); setProfile(null); setArticles([]); setTranslations([]); setMessage("");
+  }
+
+  async function manageEditorProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || profile?.role !== "admin" || !profileUserId.trim()) { setMessage("শুধু Admin newsroom user role পরিচালনা করতে পারবেন।"); return; }
+    setBusy(true); setMessage("");
+    const { error } = await supabase.from("editor_profiles").upsert({ user_id: profileUserId.trim(), display_name: profileDisplayName.trim() || null, role: profileRole }, { onConflict: "user_id" });
+    if (error) setMessage("User role update হয়নি: " + error.message + "। UUID-টি Supabase Auth-এ থাকা user-এর হতে হবে।");
+    else { setMessage("Newsroom user role সংরক্ষিত হয়েছে।"); setProfileUserId(""); setProfileDisplayName(""); const { data } = await supabase.from("editor_profiles").select("user_id,display_name,role,created_at").order("created_at", { ascending: true }); setEditorProfiles((data ?? []) as EditorProfile[]); }
+    setBusy(false);
+  }
+
+  async function deleteMedia(item: {name:string; url:string; path:string}) {
+    if (!supabase || profile?.role !== "admin") return;
+    if (!window.confirm(`Delete media file “${item.name}”? Articles using this image may show a broken image.`)) return;
+    setBusy(true); const { error } = await supabase.storage.from("newsroom-media").remove([item.path]);
+    if (error) setMessage("Media delete ব্যর্থ: " + error.message);
+    else { setMediaItems((items) => items.filter((media) => media.path !== item.path)); setMessage("Media file মুছে ফেলা হয়েছে।"); }
+    setBusy(false);
+  }
+
+  async function restoreRevision(row: Revision) {
+    if (!supabase || !userId || !profile || profile.role !== "admin") return;
+    const snapshot = row.snapshot as Record<string, unknown>;
+    if (!window.confirm("এই revision restore করলে বর্তমান article content বদলে যাবে। চালিয়ে যাবে?")) return;
+    const nullableText = (value: unknown): string | null => typeof value === "string" ? value : null;
+    const restoredStatus = ["draft", "published", "archived"].includes(String(snapshot.status))
+      ? String(snapshot.status) as "draft" | "published" | "archived" : "draft";
+    setBusy(true); setMessage("");
+    const { error } = await supabase.from("articles").update({
+      title: String(snapshot.title ?? ""), slug: String(snapshot.slug ?? ""), category: String(snapshot.category ?? "World"),
+      status: restoredStatus, excerpt: nullableText(snapshot.excerpt), content: nullableText(snapshot.content),
+      image_url: nullableText(snapshot.image_url), author_name: nullableText(snapshot.author_name),
+      published_at: nullableText(snapshot.published_at), scheduled_at: null,
+    }).eq("id", row.article_id);
+    if (error) setMessage("Revision restore ব্যর্থ: " + error.message);
+    else { setMessage("Revision restore হয়েছে; বর্তমান সংস্করণও history-তে সংরক্ষিত হয়েছে।"); await loadEditor(userId); }
+    setBusy(false);
   }
 
   const nav: { id: Tab; label: string; icon: string; hint?: string }[] = [
@@ -270,6 +368,7 @@ export default function AdminPage() {
     { id: "translations", label: "Translation Desk", icon: "文", hint: reviewTranslations.length ? String(reviewTranslations.length) : undefined },
     { id: "sections", label: "Categories", icon: "▧" },
     { id: "seo", label: "SEO Center", icon: "⌕" },
+    { id: "settings", label: "Site controls", icon: "⚙" },
   ];
 
   if (loading) return <main className="grid min-h-screen place-items-center bg-slate-50 text-slate-600">Newsroom workspace লোড হচ্ছে…</main>;
@@ -328,8 +427,9 @@ export default function AdminPage() {
 
           {tab === "articles" && <div className={cardClass}>
             <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">Article library</h2><p className="mt-1 text-sm text-slate-500">{filteredArticles.length} stories match your filters</p></div><button onClick={() => resetEditor()} className={buttonClass}>＋ New article</button></div>
-            <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_170px_190px]"><input aria-label="Search articles" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search headline, slug, author…" className={inputClass + " mt-0"}/><select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass + " mt-0"}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={inputClass + " mt-0"}><option value="all">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
-            <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] border-collapse text-left"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-400"><th className="px-3 py-3">Article</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Created</th><th className="px-3 py-3 text-right">Actions</th></tr></thead><tbody>{filteredArticles.map((a) => <tr key={a.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50"><td className="max-w-[360px] px-3 py-4"><p className="truncate text-sm font-bold">{a.title}</p><p className="mt-1 truncate text-xs text-slate-400">/{a.slug}</p></td><td className="px-3 py-4 text-sm">{a.category}</td><td className="px-3 py-4"><span className={"rounded-full px-2.5 py-1 text-[10px] font-black uppercase " + (a.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{a.status}</span></td><td className="px-3 py-4 text-xs text-slate-500">{new Date(a.created_at).toLocaleDateString()}</td><td className="px-3 py-4"><div className="flex justify-end gap-2"><button onClick={() => void startEditing(a)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Edit</button><button disabled={busy} onClick={() => void changePublishState(a)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50">{a.status === "published" ? "Unpublish" : "Publish"}</button></div></td></tr>)}</tbody></table>{!filteredArticles.length && <p className="py-10 text-center text-sm text-slate-400">এই ফিল্টারে কোনো খবর পাওয়া যায়নি।</p>}</div>
+            <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_170px_190px]"><input aria-label="Search articles" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search headline, slug, author…" className={inputClass + " mt-0"}/><select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass + " mt-0"}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="scheduled">Scheduled</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={inputClass + " mt-0"}><option value="all">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
+            <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] border-collapse text-left"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-400"><th className="px-3 py-3">Article</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Created</th><th className="px-3 py-3 text-right">Actions</th></tr></thead><tbody>{filteredArticles.map((a) => <tr key={a.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50"><td className="max-w-[360px] px-3 py-4"><p className="truncate text-sm font-bold">{a.title}</p><p className="mt-1 truncate text-xs text-slate-400">/{a.slug}</p></td><td className="px-3 py-4 text-sm">{a.category}</td><td className="px-3 py-4"><span className={"rounded-full px-2.5 py-1 text-[10px] font-black uppercase " + (a.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{a.scheduled_at && a.status === "draft" ? "scheduled" : a.status}</span></td><td className="px-3 py-4 text-xs text-slate-500">{new Date(a.created_at).toLocaleDateString()}</td><td className="px-3 py-4"><div className="flex justify-end gap-2"><button onClick={() => void startEditing(a)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Edit</button><button disabled={busy} onClick={() => void changePublishState(a)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50">{a.status === "published" ? "Unpublish" : "Publish"}</button></div></td></tr>)}</tbody></table>{!filteredArticles.length && <p className="py-10 text-center text-sm text-slate-400">এই ফিল্টারে কোনো খবর পাওয়া যায়নি।</p>}</div>
+            <div className="mt-5 border-t border-slate-100 pt-5"><h3 className="font-black">Revision history</h3><p className="mt-1 text-xs text-slate-400">Article edit হলে আগের English article snapshot এখানে জমা হবে।</p><select value={revisionArticleId || ""} onChange={(e) => setRevisionArticleId(e.target.value || null)} className={inputClass}><option value="">Choose an article</option>{articles.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select>{revisionArticleId && <div className="mt-3 space-y-2">{revisionRows.filter((r) => r.article_id === revisionArticleId).map((r) => <details key={r.id} className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-bold">{new Date(r.changed_at).toLocaleString()} · Previous version</summary>{profile.role === "admin" && <button type="button" disabled={busy} onClick={() => void restoreRevision(r)} className="mt-3 rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 disabled:opacity-50">Restore this revision</button>}<pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs">{JSON.stringify(r.snapshot, null, 2)}</pre></details>)}{!revisionRows.some((r) => r.article_id === revisionArticleId) && <p className="text-sm text-slate-400">এই article-এর জন্য এখনো revision নেই। পরবর্তী পরিবর্তনের আগে থেকে পুরোনো version তৈরি হবে না।</p>}</div>}</div>
           </div>}
 
           {tab === "write" && <form onSubmit={saveArticle} className="space-y-5">
@@ -347,8 +447,8 @@ export default function AdminPage() {
               <label className="mt-4 block text-sm font-bold">সংবাদের বিবরণ *<textarea required rows={10} value={bnContent} onChange={(e) => setBnContent(e.target.value)} className={inputClass}/></label>
             </div>
             <div className={cardClass}><h2 className="font-black">Publishing & media</h2><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-bold">Featured image URL<input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" className={inputClass}/></label><label className="text-sm font-bold">Byline<input value={author} onChange={(e) => setAuthor(e.target.value)} className={inputClass}/></label></div>{imageUrl && <div className="mt-4 flex items-center gap-4 rounded-xl bg-slate-50 p-3"><img src={imageUrl} alt="Featured image preview" className="h-20 w-28 rounded-lg object-cover" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}/><p className="text-xs text-slate-500">Featured image preview</p></div>}
-              <label className="mt-4 block text-sm font-bold">Action<select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className={inputClass}><option value="draft">Save as draft</option><option value="published">Publish both languages</option></select></label>
-              <div className="mt-5 flex flex-wrap gap-3"><button disabled={busy} className={buttonClass}>{busy ? "Saving…" : status === "published" ? "Publish bilingual article" : "Save draft"}</button><button type="button" disabled={busy || !editingId} onClick={() => editingId && void autoTranslateArticle(editingId)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold disabled:opacity-50">Auto-translate other languages</button></div>
+              <label className="mt-4 block text-sm font-bold">Action<select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published" | "scheduled")} className={inputClass}><option value="draft">Save as draft</option><option value="scheduled">Schedule publishing</option><option value="published">Publish both languages now</option></select></label>{status === "scheduled" && <label className="mt-4 block text-sm font-bold">Publish date & time<input type="datetime-local" required min={new Date(Date.now() + 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16)} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className={inputClass}/><span className="mt-1 block text-xs font-normal text-slate-400">Uses the browser’s local timezone. Supabase database scheduler checks due stories every minute.</span></label>}
+              <div className="mt-5 flex flex-wrap gap-3"><button disabled={busy} className={buttonClass}>{busy ? "Saving…" : status === "published" ? "Publish bilingual article" : status === "scheduled" ? "Schedule article" : "Save draft"}</button><button type="button" disabled={busy || !editingId} onClick={() => editingId && void autoTranslateArticle(editingId)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold disabled:opacity-50">Auto-translate other languages</button></div>
             </div>
           </form>}
 
@@ -362,6 +462,20 @@ export default function AdminPage() {
           </div>}
 
           {tab === "sections" && <div className={cardClass}><h2 className="text-xl font-black">Categories & homepage coverage</h2><p className="mt-1 text-sm leading-6 text-slate-500">টপ মেনু ছোট রাখা হয়েছে, কিন্তু সব editorial বিভাগ রাখা আছে। এই ভিউ বিভাগভিত্তিক কনটেন্ট দেখায়; বিভাগ বা homepage layout পরিবর্তনের স্থায়ী সেটিংস বর্তমানে database schema-তে নেই।</p><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{CATEGORIES.map((c) => { const items = articles.filter((a) => a.category.toLowerCase() === c.toLowerCase()); return <button key={c} onClick={() => { setCategoryFilter(c); setStatusFilter("all"); setQuery(""); setTab("articles"); }} className="flex items-center justify-between rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50"><div><p className="font-bold">{c}</p><p className="mt-1 text-xs text-slate-400">{items.filter((a) => a.status === "published").length} published · {items.filter((a) => a.status !== "published").length} drafts</p></div><span className="grid h-9 min-w-9 place-items-center rounded-full bg-slate-100 px-2 text-sm font-black">{items.length}</span></button>; })}</div><p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">Homepage section order, featured pinning এবং breaking-news banner-এর persistent controls চালু করতে আলাদা site-settings schema ও frontend integration দরকার। এখনো ওই সেটিংস সংরক্ষণের ভান করা হচ্ছে না।</p></div>}
+
+          {tab === "settings" && <div className="space-y-5">
+            <form onSubmit={saveSiteSettings} className={cardClass}>
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">Homepage controls</h2><p className="mt-1 text-sm text-slate-500">Breaking-news banner, featured story selection এবং homepage section order সংরক্ষণ করো।</p></div><span className={"rounded-full px-3 py-1 text-xs font-black " + (profile.role === "admin" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{profile.role === "admin" ? "Admin access" : "Read only"}</span></div>
+              <label className="mt-5 flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={breakingEnabled} onChange={(e) => setBreakingEnabled(e.target.checked)} disabled={profile.role !== "admin"} className="h-4 w-4"/> Breaking-news banner enabled</label>
+              <div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-bold">Breaking news (English)<input value={breakingEn} onChange={(e) => setBreakingEn(e.target.value)} disabled={profile.role !== "admin"} className={inputClass}/></label><label className="text-sm font-bold">ব্রেকিং নিউজ (বাংলা)<input value={breakingBn} onChange={(e) => setBreakingBn(e.target.value)} disabled={profile.role !== "admin"} className={inputClass}/></label></div>
+              <label className="mt-4 block text-sm font-bold">Featured stories (select multiple)<select multiple value={featuredIds} onChange={(e) => setFeaturedIds(Array.from(e.target.selectedOptions, (o) => o.value))} disabled={profile.role !== "admin"} className={inputClass + " min-h-36"}>{published.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-400">Ctrl/Command ধরে একাধিক story বেছে নাও।</span></label>
+              <div className="mt-4"><p className="text-sm font-bold">Homepage section order</p><p className="mt-1 text-xs text-slate-400">একটি section বেছে নিয়ে Move up/down দিয়ে সাজাও।</p><div className="mt-3 space-y-2">{sectionOrder.map((section, index) => <div key={section} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2"><span className="text-sm font-bold">{index + 1}. {section}</span><span className="flex gap-2"><button type="button" disabled={profile.role !== "admin" || index === 0} onClick={() => setSectionOrder((old) => { const next = [...old]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} className="rounded border px-2 py-1 text-xs disabled:opacity-30">↑</button><button type="button" disabled={profile.role !== "admin" || index === sectionOrder.length - 1} onClick={() => setSectionOrder((old) => { const next = [...old]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next; })} className="rounded border px-2 py-1 text-xs disabled:opacity-30">↓</button></span></div>)}</div></div>
+              <button disabled={busy || profile.role !== "admin"} className={buttonClass + " mt-5"}>{busy ? "Saving…" : "Save homepage settings"}</button>
+              <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">এই controls homepage integration-এর সঙ্গে যুক্ত। Breaking news, featured story ও section order public homepage-এ প্রয়োগ হবে।</p>
+            </form>
+            <div className={cardClass}><h2 className="text-xl font-black">Media library</h2><p className="mt-1 text-sm text-slate-500">Image upload (max 10 MB). আপলোড করা ছবির URL article editor-এ বসে যাবে।</p><label className="mt-4 block text-sm font-bold">Upload image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" disabled={busy} onChange={(e) => { void uploadMedia(e.target.files?.[0] || null); e.currentTarget.value = ""; }} className={inputClass}/></label>{mediaItems.length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{mediaItems.map((item) => <div key={item.url} className="overflow-hidden rounded-xl border border-slate-200"><button type="button" onClick={() => { setImageUrl(item.url); setTab("write"); setMessage("ছবির URL editor-এ বসানো হয়েছে।"); }} className="block w-full text-left"><img src={item.url} alt="" className="h-36 w-full object-cover"/><p className="truncate p-3 text-xs font-bold">{item.name}</p></button>{profile.role === "admin" && <button type="button" disabled={busy} onClick={() => void deleteMedia(item)} className="m-3 rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Delete media</button>}</div>)}</div>}<p className="mt-3 text-xs text-slate-400">এই account-এর newsroom-media folder থেকে media browse করা হয়। Admin পুরোনো ফাইল delete করতে পারেন; যেসব article-এ ফাইলটি ব্যবহৃত, সেগুলো আগে যাচাই করো।</p></div>
+            {profile.role === "admin" && <div className={cardClass}><h2 className="text-xl font-black">Newsroom user management</h2><p className="mt-1 text-sm text-slate-500">Supabase Auth-এ আগে থেকে থাকা user-এর UUID দিয়ে Admin/Editor access assign করো। Public sign-up খোলা হয় না।</p><form onSubmit={manageEditorProfile} className="mt-4 grid gap-3 md:grid-cols-3"><label className="text-sm font-bold md:col-span-3">Auth user UUID<input required value={profileUserId} onChange={(e) => setProfileUserId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass}/></label><label className="text-sm font-bold">Display name<input value={profileDisplayName} onChange={(e) => setProfileDisplayName(e.target.value)} className={inputClass}/></label><label className="text-sm font-bold">Role<select value={profileRole} onChange={(e) => setProfileRole(e.target.value as "admin" | "editor")} className={inputClass}><option value="editor">Editor</option><option value="admin">Admin</option></select></label><button disabled={busy} className={buttonClass + " self-end"}>Save user role</button></form><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-400"><th className="py-3 pr-3">Display name</th><th className="py-3 pr-3">User UUID</th><th className="py-3">Role</th></tr></thead><tbody>{editorProfiles.map((ep) => <tr key={ep.user_id} className="border-b border-slate-100"><td className="py-3 pr-3">{ep.display_name || "—"}</td><td className="py-3 pr-3 font-mono text-xs">{ep.user_id}</td><td className="py-3 capitalize">{ep.role}</td></tr>)}</tbody></table></div></div>}
+          </div>}
 
           {tab === "seo" && <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[{label:"Published articles",value:published.length,desc:"SEO audit target"},{label:"Missing summaries",value:published.filter((a) => !a.excerpt?.trim()).length,desc:"Add a useful meta description / excerpt"},{label:"Missing featured image",value:published.filter((a) => !a.image_url?.trim()).length,desc:"Add a shareable image"}].map((item) => <div key={item.label} className={cardClass}><p className="text-sm font-bold text-slate-500">{item.label}</p><p className="mt-3 text-3xl font-black">{item.value}</p><p className="mt-2 text-xs text-slate-400">{item.desc}</p></div>)}</div>
             <div className={cardClass}><h2 className="text-xl font-black">SEO checklist</h2><p className="mt-1 text-sm text-slate-500">এগুলো basic content checks—Google indexing বা ranking-এর নিশ্চয়তা নয়।</p><div className="mt-4 divide-y divide-slate-100">{[{label:"Published article has URL slug",count:published.filter((a) => !a.slug?.trim()).length},{label:"Published article has summary",count:published.filter((a) => !a.excerpt?.trim()).length},{label:"Published article has featured image",count:published.filter((a) => !a.image_url?.trim()).length},{label:"Bengali translation published",count:published.filter((a) => !translations.some((t) => t.article_id === a.id && t.language_code === "bn" && t.translation_status === "published")).length}].map((item) => <div key={item.label} className="flex items-center justify-between gap-4 py-4"><span className="text-sm font-bold">{item.label}</span><span className={"rounded-full px-3 py-1 text-xs font-black " + (item.count ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>{item.count ? item.count + " need attention" : "Looks good"}</span></div>)}</div><div className="mt-5 flex flex-wrap gap-3"><a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className={buttonClass}>Open Google Search Console ↗</a><a href="/sitemap.xml" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold">View sitemap ↗</a><a href="/news-sitemap.xml" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold">News sitemap ↗</a></div></div>
