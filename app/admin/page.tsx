@@ -96,8 +96,9 @@ export default function AdminPage() {
       setTranslations([]);
       setMessage((old) => old || "অনুবাদের তালিকা লোড করা যায়নি: " + translationResult.error.message);
     } else setTranslations((translationResult.data ?? []) as Translation[]);
-    const { data: mediaFolders } = await supabase.storage.from("newsroom-media").list(id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
-    setMediaItems((mediaFolders ?? []).filter((item) => item.name && item.id).map((item) => { const path = `${id}/${item.name}`; return { name: item.name, path, url: supabase.storage.from("newsroom-media").getPublicUrl(path).data.publicUrl }; }));
+    const mediaBucket = supabase.storage.from("newsroom-media");
+    const { data: mediaFolders } = await mediaBucket.list(id, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+    setMediaItems((mediaFolders ?? []).filter((item) => item.name && item.id).map((item) => { const path = `${id}/${item.name}`; return { name: item.name, path, url: mediaBucket.getPublicUrl(path).data.publicUrl }; }));
     if (editor?.role === "admin") {
       const { data: profilesData } = await supabase.from("editor_profiles").select("user_id,display_name,role,created_at").order("created_at", { ascending: true });
       setEditorProfiles((profilesData ?? []) as EditorProfile[]);
