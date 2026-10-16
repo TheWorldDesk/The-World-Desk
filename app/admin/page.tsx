@@ -326,7 +326,7 @@ export default function AdminPage() {
     event.preventDefault();
     if (!supabase || profile?.role !== "admin" || !profileUserId.trim()) { setMessage("শুধু Admin newsroom user role পরিচালনা করতে পারবেন।"); return; }
     setBusy(true); setMessage("");
-    const { error } = await supabase.rpc("admin_upsert_editor_profile", { p_user_id: profileUserId.trim(), p_display_name: profileDisplayName.trim() || null, p_role: profileRole });
+    const { error } = await supabase.from("editor_profiles").upsert({ user_id: profileUserId.trim(), display_name: profileDisplayName.trim() || null, role: profileRole }, { onConflict: "user_id" });
     if (error) setMessage("User role update হয়নি: " + error.message + "। UUID-টি Supabase Auth-এ থাকা user-এর হতে হবে।");
     else { setMessage("Newsroom user role সংরক্ষিত হয়েছে।"); setProfileUserId(""); setProfileDisplayName(""); const { data } = await supabase.from("editor_profiles").select("user_id,display_name,role,created_at").order("created_at", { ascending: true }); setEditorProfiles((data ?? []) as EditorProfile[]); }
     setBusy(false);
