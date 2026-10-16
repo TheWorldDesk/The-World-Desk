@@ -47,7 +47,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Choose a supported non-English target language." }, { status: 400 });
   }
   const fields = [body.title, body.excerpt, body.content].filter((value): value is string => typeof value === "string");
-  if (!fields.length || fields.some((value) => value.length > 100000)) return NextResponse.json({ error: "Provide story text, with each field no longer than 100,000 characters." }, { status: 400 });
+  const totalCharacters = fields.reduce((total, value) => total + value.length, 0);
+  if (!fields.length || totalCharacters > 30000) {
+    return NextResponse.json({ error: "Provide story text totaling no more than 30,000 characters." }, { status: 400 });
+  }
+
+  // This endpoint uses a paid translation API. Require an approved editor for every
+  // request, not only requests that save results, to prevent anonymous cost abuse.
+  const authHeader = request.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) return NextResponse.json({ error: "Sign in with an approved editor account." }, { status: 401 });
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json({ error: "Editor authentication is not configured." }, { status: 503 });
+  }
+
+  const client = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
+  const { data: userData, error: userError } = await client.auth.getUser(token);
+  if (userError || !userData.user) {
+    return NextResponse.json({ error: "Editor authentication failed." }, { status: 401 });
+  }
+
+  const { data: profile, error: profileError } = await client
+    .from("editor_profiles")
+    .select("role")
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+  if (profileError || !profile || !["admin", "editor"].includes(profile.role)) {
+    return NextResponse.json({ error: "Approved editor access required." }, { status: 403 });
+  }
+  if (body.save && !body.articleId) {
+    return NextResponse.json({ error: "Saving a translation requires articleId." }, { status: 400 });
+  }
 
   try {
     const [title, excerpt, content] = await Promise.all([
@@ -57,18 +90,6 @@ export async function POST(request: Request) {
     ]);
 
     if (body.save) {
-      const authHeader = request.headers.get("authorization") || "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!token || !supabaseUrl || !supabaseKey || !body.articleId) {
-        return NextResponse.json({ error: "Saving requires an authenticated editor session and articleId." }, { status: 401 });
-      }
-      const client = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
-      const { data: userData, error: userError } = await client.auth.getUser(token);
-      if (userError || !userData.user) return NextResponse.json({ error: "Editor authentication failed." }, { status: 401 });
-      const { data: profile } = await client.from("editor_profiles").select("role").eq("user_id", userData.user.id).maybeSingle();
-      if (!profile || !["admin", "editor"].includes(profile.role)) return NextResponse.json({ error: "Editor access required." }, { status: 403 });
       const { data: article, error: articleError } = await client.from("articles").select("id").eq("id", body.articleId).maybeSingle();
       if (articleError || !article) return NextResponse.json({ error: "Source article not found or access denied." }, { status: 404 });
       const { error: saveError } = await client.from("article_translations").upsert({
