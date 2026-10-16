@@ -1,12 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { LOCALE_LABELS, SUPPORTED_LOCALES } from "@/lib/i18n";
 
 type Profile = { display_name: string | null; role: "editor" | "admin" };
-type Article = { id: string; title: string; slug: string; category: string; status: string; excerpt: string | null; content: string | null; image_url: string | null; author_name: string | null; created_at: string };
+type Article = {
+  id: string; title: string; slug: string; category: string; status: string;
+  excerpt: string | null; content: string | null; image_url: string | null;
+  author_name: string | null; created_at: string; published_at?: string | null;
+};
+type Translation = {
+  article_id: string; language_code: string; title: string; excerpt: string | null;
+  content: string | null; translation_status: string;
+};
+type Tab = "dashboard" | "articles" | "write" | "translations" | "sections" | "seo";
+const CATEGORIES = ["World", "Politics", "Business", "Technology", "Science", "Health", "Sports", "Culture", "Climate", "Africa", "Asia", "Europe", "Middle East", "North America", "Latin America", "Earth"];
+const inputClass = "mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+const cardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+const buttonClass = "rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50";
 
 export default function AdminPage() {
   const [email, setEmail] = useState("");
@@ -14,9 +27,14 @@ export default function AdminPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
+  const [translations, setTranslations] = useState<Translation[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const [title, setTitle] = useState("");
   const [bnTitle, setBnTitle] = useState("");
@@ -30,6 +48,7 @@ export default function AdminPage() {
   const [author, setAuthor] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("draft");
   const [editingId, setEditingId] = useState<string | null>(null);
+
   const [translationArticleId, setTranslationArticleId] = useState("");
   const [translationLanguage, setTranslationLanguage] = useState("bn");
   const [translationTitle, setTranslationTitle] = useState("");
@@ -37,35 +56,38 @@ export default function AdminPage() {
   const [translationContent, setTranslationContent] = useState("");
   const [translationStatus, setTranslationStatus] = useState<"draft" | "review" | "published">("draft");
 
-  async function loadEditor(id: string) {
+  const loadEditor = useCallback(async (id: string) => {
     if (!supabase) return;
-    const { data: editor, error } = await supabase
-      .from("editor_profiles")
-      .select("display_name,role")
-      .eq("user_id", id)
-      .maybeSingle();
-
-    if (error || !editor) {
+    const { data: editor, error } = await supabase.from("editor_profiles")
+      .select("display_name,role").eq("user_id", id).maybeSingle();
+    if (error || !editor || !["admin", "editor"].includes(editor.role)) {
       setProfile(null);
-      setMessage("Your account is signed in, but it has no editor profile. Ask the project owner to grant editor access in Supabase.");
+      setMessage("এই অ্যাকাউন্টে newsroom access নেই। Supabase-এ editor_profiles থেকে অনুমতি দিতে হবে।");
       return;
     }
     setProfile(editor as Profile);
     setAuthor(editor.display_name || "");
-    const { data, error: listError } = await supabase
-      .from("articles")
-      .select("id,title,slug,category,status,excerpt,content,image_url,author_name,created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (listError) setMessage("Could not load articles: " + listError.message);
-    else setArticles((data ?? []) as Article[]);
-  }
+    const [articleResult, translationResult] = await Promise.all([
+      supabase.from("articles")
+        .select("id,title,slug,category,status,excerpt,content,image_url,author_name,created_at,published_at")
+        .order("created_at", { ascending: false }).limit(200),
+      supabase.from("article_translations")
+        .select("article_id,language_code,title,excerpt,content,translation_status")
+        .order("updated_at", { ascending: false }).limit(1000),
+    ]);
+    if (articleResult.error) setMessage("খবর লোড করা যায়নি: " + articleResult.error.message);
+    else setArticles((articleResult.data ?? []) as Article[]);
+    if (translationResult.error) {
+      setTranslations([]);
+      setMessage((old) => old || "অনুবাদের তালিকা লোড করা যায়নি: " + translationResult.error.message);
+    } else setTranslations((translationResult.data ?? []) as Translation[]);
+  }, []);
 
   useEffect(() => {
     let active = true;
     async function init() {
       if (!supabase) {
-        setMessage("Supabase is not configured. Check the Vercel environment variables.");
+        setMessage("Supabase কনফিগার করা নেই। Vercel environment variables পরীক্ষা করো।");
         setLoading(false);
         return;
       }
@@ -78,294 +100,274 @@ export default function AdminPage() {
     }
     void init();
     return () => { active = false; };
-  }, []);
+  }, [loadEditor]);
+
+  const published = articles.filter((a) => a.status === "published");
+  const drafts = articles.filter((a) => a.status !== "published");
+  const reviewTranslations = translations.filter((t) => t.translation_status === "review");
+  const filteredArticles = useMemo(() => articles.filter((article) => {
+    const matchesQuery = !query || [article.title, article.slug, article.author_name || "", article.category]
+      .some((value) => value.toLowerCase().includes(query.toLowerCase()));
+    const matchesStatus = statusFilter === "all" || article.status === statusFilter;
+    const matchesCategory = categoryFilter === "all" || article.category === categoryFilter;
+    return matchesQuery && matchesStatus && matchesCategory;
+  }), [articles, query, statusFilter, categoryFilter]);
+  const seoIssues = articles.filter((a) => a.status === "published" && (!a.excerpt?.trim() || !a.image_url?.trim() || !a.slug.trim()));
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
-    setBusy(true);
-    setMessage("");
+    setBusy(true); setMessage("");
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setMessage("Sign-in failed: " + error.message);
-    } else if (data.user) {
+    if (error) setMessage("Sign-in ব্যর্থ: " + error.message);
+    else if (data.user) {
       setUserId(data.user.id);
       await loadEditor(data.user.id);
     }
     setBusy(false);
   }
 
-  async function publishArticle(event: FormEvent<HTMLFormElement>) {
+  function resetEditor() {
+    setEditingId(null); setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent("");
+    setSlug(""); setCategory("World"); setExcerpt(""); setContent(""); setImageUrl("");
+    setStatus("draft"); setTab("write");
+  }
+
+  async function startEditing(article: Article) {
+    if (!supabase) return;
+    setEditingId(article.id); setTitle(article.title); setSlug(article.slug); setCategory(article.category);
+    setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || "");
+    setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft");
+    const { data } = await supabase.from("article_translations")
+      .select("title,excerpt,content").eq("article_id", article.id).eq("language_code", "bn").maybeSingle();
+    setBnTitle(data?.title || ""); setBnExcerpt(data?.excerpt || ""); setBnContent(data?.content || "");
+    setMessage("খবরটি সম্পাদনার জন্য খোলা হয়েছে।");
+    setTab("write"); window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveArticle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase || !userId || !profile) return;
     if (!title.trim() || !content.trim() || !bnTitle.trim() || !bnContent.trim()) {
-      setMessage("Please complete both English and Bangla headlines and story text.");
-      return;
+      setMessage("ইংরেজি ও বাংলা—দুই সংস্করণের শিরোনাম এবং মূল খবর পূরণ করো।"); return;
     }
-    setBusy(true);
-    setMessage("");
-    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
-    if (!cleanSlug) {
-      setMessage("Please provide an English URL slug using letters, numbers, and hyphens.");
-      setBusy(false);
-      return;
-    }
+    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").replace(/-+/g, "-");
+    if (!cleanSlug) { setMessage("ইংরেজি অক্ষর, সংখ্যা ও হাইফেন দিয়ে URL slug দাও।"); return; }
+    setBusy(true); setMessage("");
     const now = new Date().toISOString();
     const payload = {
-      slug: cleanSlug, title: title.trim(), excerpt: excerpt.trim() || null,
-      content: content.trim(), category, image_url: imageUrl.trim() || null,
-      author_name: author.trim() || profile.display_name || "The-World-Desk",
+      slug: cleanSlug, title: title.trim(), excerpt: excerpt.trim() || null, content: content.trim(),
+      category, image_url: imageUrl.trim() || null, author_name: author.trim() || profile.display_name || "The World Desk",
       language: "en", status: "draft", published_at: null,
     };
     const result = editingId
       ? await supabase.from("articles").update(payload).eq("id", editingId).select("id").single()
       : await supabase.from("articles").insert(payload).select("id").single();
     if (result.error || !result.data?.id) {
-      setMessage("Could not save English story: " + (result.error?.message || "No article ID returned."));
-      setBusy(false);
-      return;
+      setMessage("ইংরেজি খবর সংরক্ষণ হয়নি: " + (result.error?.message || "Article ID পাওয়া যায়নি।"));
+      setBusy(false); return;
     }
     const articleId = result.data.id as string;
-    const translation = await supabase.from("article_translations").upsert({
-      article_id: articleId, language_code: "bn",
-      title: bnTitle.trim(), excerpt: bnExcerpt.trim() || null, content: bnContent.trim(),
-      translation_status: "draft", translated_by: email || "editor",
-      reviewed_by: null, updated_at: now,
+    const translationResult = await supabase.from("article_translations").upsert({
+      article_id: articleId, language_code: "bn", title: bnTitle.trim(),
+      excerpt: bnExcerpt.trim() || null, content: bnContent.trim(), translation_status: "draft",
+      translated_by: email || "editor", reviewed_by: null, updated_at: now,
     }, { onConflict: "article_id,language_code" });
-    if (translation.error) {
-      setMessage("English draft saved, but Bangla could not be saved: " + translation.error.message + ". Nothing was published.");
-      setBusy(false);
-      await loadEditor(userId);
-      return;
+    if (translationResult.error) {
+      setMessage("ইংরেজি Draft সেভ হয়েছে, কিন্তু বাংলা সংস্করণ সেভ হয়নি: " + translationResult.error.message);
+      await loadEditor(userId); setBusy(false); return;
     }
     if (status === "published") {
       const banglaPublish = await supabase.from("article_translations").update({
         translation_status: "published", reviewed_by: userId, updated_at: new Date().toISOString(),
       }).eq("article_id", articleId).eq("language_code", "bn");
       if (banglaPublish.error) {
-        setMessage("Both drafts are saved, but Bangla publication failed: " + banglaPublish.error.message + ". English remains unpublished.");
-        setBusy(false);
-        await loadEditor(userId);
-        return;
+        setMessage("দুটি সংস্করণ সেভ হয়েছে, কিন্তু বাংলা প্রকাশ হয়নি: " + banglaPublish.error.message);
+        await loadEditor(userId); setBusy(false); return;
       }
       const englishPublish = await supabase.from("articles").update({
         status: "published", published_at: new Date().toISOString(),
       }).eq("id", articleId);
       if (englishPublish.error) {
-        await supabase.from("article_translations").update({
-          translation_status: "draft", reviewed_by: null,
-        }).eq("article_id", articleId).eq("language_code", "bn");
-        setMessage("English publication failed: " + englishPublish.error.message + ". Bangla was returned to draft.");
-        setBusy(false);
-        await loadEditor(userId);
-        return;
+        await supabase.from("article_translations").update({ translation_status: "draft", reviewed_by: null })
+          .eq("article_id", articleId).eq("language_code", "bn");
+        setMessage("ইংরেজি প্রকাশ ব্যর্থ: " + englishPublish.error.message + "। বাংলা Draft-এ ফিরিয়ে নেওয়া হয়েছে।");
+        await loadEditor(userId); setBusy(false); return;
       }
     }
-    setMessage(status === "published" ? "Both English and Bangla versions published." : "Both language drafts saved.");
-    setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent("");
-    setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setEditingId(null);
-    await loadEditor(userId);
-    setBusy(false);
+    setMessage(status === "published" ? "ইংরেজি ও বাংলা—দুই সংস্করণ প্রকাশিত হয়েছে।" : "দুই ভাষার Draft সংরক্ষিত হয়েছে।");
+    setEditingId(null); setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent(""); setSlug("");
+    setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft");
+    await loadEditor(userId); setBusy(false); setTab("articles");
+  }
+
+  async function changePublishState(article: Article) {
+    if (!supabase || !userId) return;
+    setBusy(true); setMessage("");
+    if (article.status === "published") {
+      const { error } = await supabase.from("articles").update({ status: "draft", published_at: null }).eq("id", article.id);
+      if (error) setMessage("Unpublish ব্যর্থ: " + error.message);
+      else setMessage("খবরটি Draft-এ ফিরিয়ে নেওয়া হয়েছে।");
+    } else {
+      const { error } = await supabase.from("articles").update({ status: "published", published_at: new Date().toISOString() }).eq("id", article.id);
+      if (error) setMessage("প্রকাশ ব্যর্থ: " + error.message);
+      else setMessage("ইংরেজি খবর প্রকাশিত হয়েছে। বাংলা অনুবাদ আলাদাভাবে যাচাই করো।");
+    }
+    await loadEditor(userId); setBusy(false);
   }
 
   async function saveTranslation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase || !userId || !profile || !translationArticleId) return;
-    setBusy(true);
-    setMessage("");
-    const result = await supabase.from("article_translations").upsert({
-      article_id: translationArticleId,
-      language_code: translationLanguage,
-      title: translationTitle.trim(),
-      excerpt: translationExcerpt.trim() || null,
-      content: translationContent.trim(),
-      translation_status: translationStatus,
-      translated_by: email || "editor",
-      reviewed_by: translationStatus === "published" ? userId : null,
+    setBusy(true); setMessage("");
+    const { error } = await supabase.from("article_translations").upsert({
+      article_id: translationArticleId, language_code: translationLanguage,
+      title: translationTitle.trim(), excerpt: translationExcerpt.trim() || null,
+      content: translationContent.trim(), translation_status: translationStatus,
+      translated_by: email || "editor", reviewed_by: translationStatus === "published" ? userId : null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "article_id,language_code" });
-    if (result.error) setMessage("Could not save translation: " + result.error.message);
-    else setMessage(translationStatus === "published" ? "Translation published." : translationStatus === "review" ? "Translation moved to review." : "Translation draft saved.");
-    setBusy(false);
+    setMessage(error ? "অনুবাদ সংরক্ষণ হয়নি: " + error.message :
+      translationStatus === "published" ? "অনুবাদ প্রকাশিত হয়েছে।" :
+      translationStatus === "review" ? "অনুবাদ Review queue-তে পাঠানো হয়েছে।" : "অনুবাদের Draft সংরক্ষিত হয়েছে।");
+    await loadEditor(userId); setBusy(false);
   }
 
   async function autoTranslateArticle(articleId: string) {
     if (!supabase || !userId || !profile) return;
-    setBusy(true);
-    setMessage("Preparing automatic translations…");
+    setBusy(true); setMessage("স্বয়ংক্রিয় অনুবাদ তৈরি হচ্ছে…");
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    const { data: source, error } = await supabase.from("articles")
-      .select("title,excerpt,content")
-      .eq("id", articleId)
-      .maybeSingle();
-    if (error || !source || !token) {
-      setMessage("Could not load source story or editor session.");
-      setBusy(false);
-      return;
-    }
+    const { data: source, error } = await supabase.from("articles").select("title,excerpt,content").eq("id", articleId).maybeSingle();
+    if (error || !source || !token) { setMessage("মূল খবর বা editor session পাওয়া যায়নি।"); setBusy(false); return; }
     const languages = SUPPORTED_LOCALES.filter((language) => language !== "en");
-    let saved = 0;
-    const failures: string[] = [];
+    let saved = 0; const failures: string[] = [];
     for (const language of languages) {
-      setMessage("Translating " + language + " (" + (saved + failures.length + 1) + "/" + languages.length + ")…");
+      setMessage("অনুবাদ হচ্ছে: " + language + " (" + (saved + failures.length + 1) + "/" + languages.length + ")");
       try {
         const response = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "content-type": "application/json", Authorization: "Bearer " + token },
-          body: JSON.stringify({
-            articleId, targetLanguage: language, save: true,
-            title: source.title, excerpt: source.excerpt || "", content: source.content || "",
-          }),
+          method: "POST", headers: { "content-type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ articleId, targetLanguage: language, save: true, title: source.title, excerpt: source.excerpt || "", content: source.content || "" }),
         });
         const payload = await response.json();
-        if (!response.ok) failures.push(language + ": " + (payload.error || response.status));
-        else saved += 1;
-      } catch {
-        failures.push(language + ": network error");
-      }
+        if (!response.ok) failures.push(language + ": " + (payload.error || response.status)); else saved += 1;
+      } catch { failures.push(language + ": network error"); }
     }
-    setMessage("Automatic translation finished: " + saved + "/" + languages.length + " languages saved as drafts." + (failures.length ? " Failed: " + failures.join(", ") : "") + " Review translations in the Translation desk before publishing.");
-    setBusy(false);
+    setMessage("অনুবাদ শেষ: " + saved + "/" + languages.length + " ভাষায় Draft তৈরি হয়েছে।" +
+      (failures.length ? " ব্যর্থ: " + failures.join(", ") : "") + " প্রকাশের আগে Translation Desk-এ যাচাই করো।");
+    await loadEditor(userId); setBusy(false);
   }
 
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
-    setUserId(null); setProfile(null); setArticles([]); setMessage("");
+    setUserId(null); setProfile(null); setArticles([]); setTranslations([]); setMessage("");
   }
 
+  const nav: { id: Tab; label: string; icon: string; hint?: string }[] = [
+    { id: "dashboard", label: "Dashboard", icon: "▦" },
+    { id: "articles", label: "Articles", icon: "▤" },
+    { id: "write", label: "Write Article", icon: "＋" },
+    { id: "translations", label: "Translation Desk", icon: "文", hint: reviewTranslations.length ? String(reviewTranslations.length) : undefined },
+    { id: "sections", label: "Categories", icon: "▧" },
+    { id: "seo", label: "SEO Center", icon: "⌕" },
+  ];
+
+  if (loading) return <main className="grid min-h-screen place-items-center bg-slate-50 text-slate-600">Newsroom workspace লোড হচ্ছে…</main>;
+  if (!userId || !profile) return (
+    <main className="grid min-h-screen place-items-center bg-slate-50 px-4 py-12 text-slate-900">
+      <form onSubmit={signIn} className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
+        <Link href="/" className="text-sm font-bold text-blue-700">← The World Desk</Link>
+        <div className="mt-8 grid h-12 w-12 place-items-center rounded-2xl bg-slate-900 text-xl font-black text-white">W</div>
+        <p className="mt-6 text-xs font-black uppercase tracking-[.2em] text-blue-700">The World Desk · Newsroom</p>
+        <h1 className="mt-2 text-3xl font-black tracking-tight">Admin workspace</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-500">নিউজ, অনুবাদ ও SEO পরিচালনার জন্য অনুমোদিত newsroom account দিয়ে সাইন ইন করো।</p>
+        {message && <p role="status" className="mt-5 rounded-xl bg-amber-50 p-3 text-sm leading-5 text-amber-900">{message}</p>}
+        <label className="mt-6 block text-sm font-bold">Email<input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass}/></label>
+        <label className="mt-4 block text-sm font-bold">Password<input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass}/></label>
+        <button disabled={busy} className={buttonClass + " mt-6 w-full"}>{busy ? "Signing in…" : "Sign in securely"}</button>
+        <p className="mt-4 text-xs leading-5 text-slate-400">Public sign-up বন্ধ। Access Supabase-এর editor_profiles permission দিয়ে নিয়ন্ত্রিত।</p>
+      </form>
+    </main>
+  );
+
   return (
-    <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
-      <div className="flex flex-wrap items-center gap-5"><Link href="/" className="font-bold text-accent">← View site</Link><Link href="/admin/analytics" className="font-bold underline">Analytics & Monetization →</Link></div>
-      <p className="mt-10 text-xs font-black uppercase tracking-widest text-accent">The-World-Desk newsroom</p>
-      <h1 className="mt-2 text-4xl font-black">Editorial workspace</h1>
-      <p className="mt-3 max-w-2xl leading-7 text-neutral-600">Sign in with an approved newsroom account to save drafts or publish English stories. Database permissions are enforced by Supabase Row Level Security.</p>
-
-      {message && <p role="status" className="mt-6 border border-black/10 bg-white p-4 text-sm leading-6">{message}</p>}
-
-      {loading ? <p className="mt-8">Checking sign-in…</p> : !userId ? (
-        <form onSubmit={signIn} className="mt-8 max-w-lg space-y-4 border border-black/10 bg-white p-6">
-          <h2 className="text-xl font-black">Editor sign in</h2>
-          <label className="block text-sm font-bold">Email
-            <input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-          </label>
-          <label className="block text-sm font-bold">Password
-            <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-          </label>
-          <button disabled={busy} className="bg-ink px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
-          <p className="text-xs leading-5 text-neutral-500">Accounts are created by the project owner. Public sign-up is disabled on this page.</p>
-        </form>
-      ) : !profile ? (
-        <div className="mt-8 border border-black/10 bg-white p-6">
-          <p className="font-bold">Editor access is not assigned to this account yet.</p>
-          <button onClick={signOut} className="mt-4 border border-black/20 px-4 py-2 text-sm font-bold">Sign out</button>
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 font-black text-white">W</div><div><p className="font-black tracking-tight">THE WORLD DESK</p><p className="text-[11px] font-bold uppercase tracking-[.16em] text-slate-400">Newsroom CMS</p></div></div>
+          <div className="flex items-center gap-3"><span className="hidden text-right sm:block"><span className="block text-sm font-bold">{profile.display_name || email}</span><span className="text-xs capitalize text-slate-500">{profile.role}</span></span><Link href="/" className="hidden rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold sm:block">View site ↗</Link><button onClick={signOut} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold">Sign out</button></div>
         </div>
-      ) : (
-        <>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-black/10 bg-white p-4">
-            <p className="text-sm">Signed in as <strong>{profile.display_name || email}</strong> · {profile.role}</p>
-            <button onClick={signOut} className="border border-black/20 px-4 py-2 text-sm font-bold">Sign out</button>
-          </div>
-          <form onSubmit={publishArticle} className="mt-8 grid gap-5 border border-black/10 bg-white p-6">
-            <h2 className="text-2xl font-black">{editingId ? "Edit bilingual story" : "Write bilingual story"}</h2>
-            <p className="text-sm leading-6 text-neutral-600">Write both versions below. The same image, category, author, and URL are shared. Publishing is attempted only after both language versions have been saved.</p>
-            {editingId && <button type="button" onClick={() => { setEditingId(null); setTitle(""); setBnTitle(""); setBnExcerpt(""); setBnContent(""); setSlug(""); setExcerpt(""); setContent(""); setImageUrl(""); setStatus("draft"); setMessage("Edit cancelled."); }} className="justify-self-start border border-black/20 px-4 py-2 text-sm font-bold">Cancel editing</button>}
-            <label className="text-sm font-bold">URL slug *
-              <input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value={slug} onChange={(e) => setSlug(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-            </label>
-            <label className="text-sm font-bold">Category
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
-                {["World", "Politics", "Business", "Technology", "Science", "Culture", "Health", "Sports"].map((item) => <option key={item}>{item}</option>)}
-              </select>
-            </label>
-            <fieldset className="grid gap-4 rounded border border-black/10 p-4">
-              <legend className="px-2 font-black">English version</legend>
-              <label className="text-sm font-bold">Headline *
-                <input required value={title} onChange={(e) => { setTitle(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">Short summary
-                <textarea rows={3} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">Story text *
-                <textarea required rows={10} value={content} onChange={(e) => setContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-            </fieldset>
-            <fieldset className="grid gap-4 rounded border border-black/10 p-4">
-              <legend className="px-2 font-black">বাংলা সংস্করণ</legend>
-              <label className="text-sm font-bold">বাংলা শিরোনাম *
-                <input required value={bnTitle} onChange={(e) => setBnTitle(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">সংক্ষিপ্ত বিবরণ
-                <textarea rows={3} value={bnExcerpt} onChange={(e) => setBnExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">সংবাদের বিবরণ *
-                <textarea required rows={10} value={bnContent} onChange={(e) => setBnContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-            </fieldset>
-            <label className="text-sm font-bold">Image URL (optional)
-              <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-            </label>
-            <label className="text-sm font-bold">Byline
-              <input value={author} onChange={(e) => setAuthor(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-            </label>
-            <label className="text-sm font-bold">Action
-              <select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
-                <option value="draft">Save as draft</option><option value="published">Publish now</option>
-              </select>
-            </label>
-            <button disabled={busy} className="justify-self-start bg-accent px-6 py-3 font-bold text-white disabled:opacity-50">{busy ? "Saving…" : editingId ? "Update story" : status === "published" ? "Publish story" : "Save draft"}</button>
-          </form>
-          <section className="mt-10">
-            <h2 className="text-2xl font-black">Recent stories</h2>
-            <div className="mt-4 divide-y divide-black/10 border-y border-black/10">
-              {articles.length ? articles.map((article) => (
-                <div key={article.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-                  <div><p className="font-bold">{article.title}</p><p className="mt-1 text-xs text-neutral-500">/{article.slug} · {article.category}</p></div>
-                  <div className="flex items-center gap-3"><span className="text-xs font-black uppercase tracking-widest">{article.status}</span><button type="button" onClick={() => { setEditingId(article.id); setTitle(article.title); setBnTitle(""); setBnExcerpt(""); setBnContent(""); void supabase?.from("article_translations").select("title,excerpt,content").eq("article_id", article.id).eq("language_code", "bn").maybeSingle().then(({ data }) => { if (data) { setBnTitle(data.title || ""); setBnExcerpt(data.excerpt || ""); setBnContent(data.content || ""); } }); setSlug(article.slug); setCategory(article.category); setExcerpt(article.excerpt || ""); setContent(article.content || ""); setImageUrl(article.image_url || ""); setAuthor(article.author_name || ""); setStatus(article.status === "published" ? "published" : "draft"); setMessage("Editing selected story."); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="border border-black/20 px-3 py-2 text-xs font-bold">Edit</button><button type="button" disabled={busy || article.status !== "published"} onClick={() => void autoTranslateArticle(article.id)} className="border border-black/20 px-3 py-2 text-xs font-bold disabled:opacity-50">Auto-translate 32 languages</button></div>
-                </div>
-              )) : <p className="py-5 text-sm text-neutral-500">No stories yet.</p>}
-            </div>
-          </section>
+      </header>
+      <div className="mx-auto grid max-w-[1600px] lg:grid-cols-[250px_minmax(0,1fr)]">
+        <aside className="border-b border-slate-200 bg-white p-4 lg:min-h-[calc(100vh-65px)] lg:border-b-0 lg:border-r lg:p-5">
+          <p className="mb-3 px-3 text-[10px] font-black uppercase tracking-[.2em] text-slate-400">Workspace</p>
+          <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1">
+            {nav.map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={"flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition " + (tab === item.id ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100")}><span className="text-lg">{item.icon}</span><span className="flex-1">{item.label}</span>{item.hint && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs text-white">{item.hint}</span>}</button>)}
+          </nav>
+          <div className="mt-6 hidden rounded-2xl bg-blue-50 p-4 lg:block"><p className="text-sm font-black text-blue-950">Editorial checklist</p><p className="mt-2 text-xs leading-5 text-blue-800">শিরোনাম, উৎস, ছবি, অনুবাদ ও SEO তথ্য প্রকাশের আগে যাচাই করো।</p><button onClick={() => setTab("seo")} className="mt-3 text-xs font-black text-blue-900 underline">Open SEO Center →</button></div>
+          <div className="mt-4 hidden border-t border-slate-100 pt-4 lg:block"><Link href="/admin/analytics" className="flex items-center justify-between rounded-xl px-3 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100">Analytics & Ads <span>↗</span></Link><a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-xl px-3 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100">Search Console <span>↗</span></a></div>
+        </aside>
+        <section className="min-w-0 p-4 sm:p-6 lg:p-8">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.2em] text-blue-700">The World Desk / {nav.find((item) => item.id === tab)?.label}</p><h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">{tab === "dashboard" ? "Newsroom overview" : nav.find((item) => item.id === tab)?.label}</h1><p className="mt-2 text-sm text-slate-500">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></div><button onClick={() => { if (userId) void loadEditor(userId); }} disabled={busy} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold shadow-sm disabled:opacity-50">↻ Refresh data</button></div>
+          {message && <div role="status" className="mb-6 flex items-start justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950"><span>{message}</span><button aria-label="Dismiss message" onClick={() => setMessage("")} className="font-black">×</button></div>}
 
-          <section className="mt-10 border border-black/10 bg-white p-6">
-            <h2 className="text-2xl font-black">Translation desk</h2>
-            <p className="mt-2 text-sm leading-6 text-neutral-600">Write or review a translation for an existing story. Only translations marked published are shown to readers; machine-generated text should be checked by a human before publication.</p>
-            <form onSubmit={saveTranslation} className="mt-5 grid gap-4">
-              <label className="text-sm font-bold">Source story *
-                <select required value={translationArticleId} onChange={(e) => {
-                  setTranslationArticleId(e.target.value);
-                  setTranslationTitle("");
-                  setTranslationExcerpt("");
-                  setTranslationContent("");
-                }} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
-                  <option value="">Choose a story</option>
-                  {articles.map((item) => <option key={item.id} value={item.id}>{item.title} ({item.status})</option>)}
-                </select>
-              </label>
-              <label className="text-sm font-bold">Target language *
-                <select value={translationLanguage} onChange={(e) => setTranslationLanguage(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
-                  {SUPPORTED_LOCALES.filter((code) => code !== "en").map((code) => <option key={code} value={code}>{LOCALE_LABELS[code]} ({code})</option>)}
-                </select>
-              </label>
-              <label className="text-sm font-bold">Translated headline *
-                <input required value={translationTitle} onChange={(e) => setTranslationTitle(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">Translated summary
-                <textarea rows={3} value={translationExcerpt} onChange={(e) => setTranslationExcerpt(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">Translated story *
-                <textarea required rows={10} value={translationContent} onChange={(e) => setTranslationContent(e.target.value)} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal" />
-              </label>
-              <label className="text-sm font-bold">Workflow status
-                <select value={translationStatus} onChange={(e) => setTranslationStatus(e.target.value as "draft" | "review" | "published")} className="mt-2 w-full border border-black/20 px-3 py-3 font-normal">
-                  <option value="draft">Draft — not public</option><option value="review">Needs review — not public</option><option value="published">Publish translation</option>
-                </select>
-              </label>
-              <button disabled={busy || !translationArticleId} className="justify-self-start bg-accent px-6 py-3 font-bold text-white disabled:opacity-50">{busy ? "Saving…" : "Save translation"}</button>
+          {tab === "dashboard" && <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[{label:"Total articles",value:articles.length,sub:"All newsroom stories",icon:"▤"},{label:"Published",value:published.length,sub:"Live English stories",icon:"↗"},{label:"Drafts",value:drafts.length,sub:"Not published",icon:"✎"},{label:"Needs review",value:reviewTranslations.length,sub:"Translations awaiting review",icon:"◷"}].map((item) => <div key={item.label} className={cardClass}><div className="flex items-start justify-between"><p className="text-sm font-bold text-slate-500">{item.label}</p><span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-lg">{item.icon}</span></div><p className="mt-4 text-3xl font-black">{item.value.toLocaleString()}</p><p className="mt-1 text-xs text-slate-400">{item.sub}</p></div>)}
+            </div>
+            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
+              <div className={cardClass}><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-black">Recent articles</h2><p className="mt-1 text-sm text-slate-500">সর্বশেষ তৈরি বা সম্পাদিত খবর</p></div><button onClick={() => setTab("articles")} className="text-sm font-bold text-blue-700">View all →</button></div>
+                <div className="mt-4 divide-y divide-slate-100">{articles.slice(0,6).map((a) => <div key={a.id} className="flex items-center gap-3 py-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-black text-slate-500">{a.category.slice(0,2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{a.title}</p><p className="mt-1 truncate text-xs text-slate-400">{a.category} · {a.slug}</p></div><span className={"rounded-full px-2.5 py-1 text-[10px] font-black uppercase " + (a.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{a.status}</span></div>)}{!articles.length && <p className="py-8 text-center text-sm text-slate-400">এখনো কোনো খবর নেই। প্রথম খবরটি লিখে শুরু করো।</p>}</div>
+              </div>
+              <div className="space-y-4">
+                <div className={cardClass}><h2 className="text-lg font-black">Quick actions</h2><div className="mt-4 grid gap-2"><button onClick={() => { resetEditor(); }} className={buttonClass + " text-left"}>＋ Write a new article</button><button onClick={() => setTab("articles")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold hover:bg-slate-50">▤ Manage all articles</button><button onClick={() => setTab("translations")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold hover:bg-slate-50">文 Review translations {reviewTranslations.length > 0 && <span className="ml-1 text-rose-600">({reviewTranslations.length})</span>}</button><button onClick={() => setTab("seo")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold hover:bg-slate-50">⌕ Run SEO checklist</button></div></div>
+                <div className={cardClass}><h2 className="text-lg font-black">Content health</h2><div className="mt-4 flex items-center justify-between"><span className="text-sm text-slate-500">Published stories with SEO gaps</span><span className={"text-lg font-black " + (seoIssues.length ? "text-amber-600" : "text-emerald-600")}>{seoIssues.length}</span></div><p className="mt-2 text-xs leading-5 text-slate-400">Missing summary, featured image or URL slug. This is a basic content check, not a Google indexing result.</p><button onClick={() => setTab("seo")} className="mt-3 text-sm font-bold text-blue-700">Review SEO →</button></div>
+              </div>
+            </div>
+          </>}
+
+          {tab === "articles" && <div className={cardClass}>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">Article library</h2><p className="mt-1 text-sm text-slate-500">{filteredArticles.length} stories match your filters</p></div><button onClick={() => resetEditor()} className={buttonClass}>＋ New article</button></div>
+            <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_170px_190px]"><input aria-label="Search articles" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search headline, slug, author…" className={inputClass + " mt-0"}/><select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass + " mt-0"}><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option></select><select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={inputClass + " mt-0"}><option value="all">All categories</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
+            <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] border-collapse text-left"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-400"><th className="px-3 py-3">Article</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Created</th><th className="px-3 py-3 text-right">Actions</th></tr></thead><tbody>{filteredArticles.map((a) => <tr key={a.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50"><td className="max-w-[360px] px-3 py-4"><p className="truncate text-sm font-bold">{a.title}</p><p className="mt-1 truncate text-xs text-slate-400">/{a.slug}</p></td><td className="px-3 py-4 text-sm">{a.category}</td><td className="px-3 py-4"><span className={"rounded-full px-2.5 py-1 text-[10px] font-black uppercase " + (a.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>{a.status}</span></td><td className="px-3 py-4 text-xs text-slate-500">{new Date(a.created_at).toLocaleDateString()}</td><td className="px-3 py-4"><div className="flex justify-end gap-2"><button onClick={() => void startEditing(a)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Edit</button><button disabled={busy} onClick={() => void changePublishState(a)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50">{a.status === "published" ? "Unpublish" : "Publish"}</button></div></td></tr>)}</tbody></table>{!filteredArticles.length && <p className="py-10 text-center text-sm text-slate-400">এই ফিল্টারে কোনো খবর পাওয়া যায়নি।</p>}</div>
+          </div>}
+
+          {tab === "write" && <form onSubmit={saveArticle} className="space-y-5">
+            <div className={cardClass}><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">{editingId ? "Edit article" : "Create bilingual article"}</h2><p className="mt-1 text-sm text-slate-500">একই Article ID-এর সঙ্গে ইংরেজি ও বাংলা সংস্করণ যুক্ত থাকবে।</p></div>{editingId && <button type="button" onClick={resetEditor} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold">Cancel edit</button>}</div>
+              <div className="mt-5 grid gap-4 md:grid-cols-2"><label className="text-sm font-bold">URL slug *<input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="global-economy-update" className={inputClass}/></label><label className="text-sm font-bold">Category<select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></label></div>
+            </div>
+            <div className={cardClass}><div className="mb-4 flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 font-black text-blue-700">EN</span><div><h2 className="font-black">English version</h2><p className="text-xs text-slate-400">Primary article and canonical slug</p></div></div>
+              <label className="block text-sm font-bold">Headline *<input required value={title} onChange={(e) => { setTitle(e.target.value); if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className={inputClass}/></label>
+              <label className="mt-4 block text-sm font-bold">Short summary<textarea rows={3} value={excerpt} onChange={(e) => setExcerpt(e.target.value)} className={inputClass}/></label>
+              <label className="mt-4 block text-sm font-bold">Story body *<textarea required rows={10} value={content} onChange={(e) => setContent(e.target.value)} className={inputClass}/></label>
+            </div>
+            <div className={cardClass}><div className="mb-4 flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 font-black text-emerald-700">বাং</span><div><h2 className="font-black">বাংলা সংস্করণ</h2><p className="text-xs text-slate-400">প্রকাশের আগে অনুবাদ যাচাই করো</p></div></div>
+              <label className="block text-sm font-bold">বাংলা শিরোনাম *<input required value={bnTitle} onChange={(e) => setBnTitle(e.target.value)} className={inputClass}/></label>
+              <label className="mt-4 block text-sm font-bold">সংক্ষিপ্ত বিবরণ<textarea rows={3} value={bnExcerpt} onChange={(e) => setBnExcerpt(e.target.value)} className={inputClass}/></label>
+              <label className="mt-4 block text-sm font-bold">সংবাদের বিবরণ *<textarea required rows={10} value={bnContent} onChange={(e) => setBnContent(e.target.value)} className={inputClass}/></label>
+            </div>
+            <div className={cardClass}><h2 className="font-black">Publishing & media</h2><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-bold">Featured image URL<input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" className={inputClass}/></label><label className="text-sm font-bold">Byline<input value={author} onChange={(e) => setAuthor(e.target.value)} className={inputClass}/></label></div>{imageUrl && <div className="mt-4 flex items-center gap-4 rounded-xl bg-slate-50 p-3"><img src={imageUrl} alt="Featured image preview" className="h-20 w-28 rounded-lg object-cover" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}/><p className="text-xs text-slate-500">Featured image preview</p></div>}
+              <label className="mt-4 block text-sm font-bold">Action<select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className={inputClass}><option value="draft">Save as draft</option><option value="published">Publish both languages</option></select></label>
+              <div className="mt-5 flex flex-wrap gap-3"><button disabled={busy} className={buttonClass}>{busy ? "Saving…" : status === "published" ? "Publish bilingual article" : "Save draft"}</button><button type="button" disabled={busy || !editingId} onClick={() => editingId && void autoTranslateArticle(editingId)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold disabled:opacity-50">Auto-translate other languages</button></div>
+            </div>
+          </form>}
+
+          {tab === "translations" && <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.9fr)]">
+            <div className={cardClass}><h2 className="text-xl font-black">Translation workflow</h2><p className="mt-1 text-sm text-slate-500">Draft → Review → Published. Machine translation সবসময় মানুষ দিয়ে যাচাই করাও।</p><div className="mt-5 space-y-3">{translations.slice(0,50).map((t) => { const source = articles.find((a) => a.id === t.article_id); return <div key={t.article_id + t.language_code} className="rounded-xl border border-slate-100 p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-bold">{t.title || source?.title || "Untitled translation"}</p><p className="mt-1 text-xs text-slate-400">{LOCALE_LABELS[t.language_code as keyof typeof LOCALE_LABELS] || t.language_code} · Source: {source?.title || "Article not loaded"}</p></div><span className={"rounded-full px-2.5 py-1 text-[10px] font-black uppercase " + (t.translation_status === "published" ? "bg-emerald-50 text-emerald-700" : t.translation_status === "review" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700")}>{t.translation_status}</span></div><button onClick={() => { setTranslationArticleId(t.article_id); setTranslationLanguage(t.language_code); setTranslationTitle(t.title || ""); setTranslationExcerpt(t.excerpt || ""); setTranslationContent(t.content || ""); setTranslationStatus(t.translation_status === "published" ? "published" : t.translation_status === "review" ? "review" : "draft"); }} className="mt-3 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Open translation</button></div>; })}{!translations.length && <p className="py-8 text-sm text-slate-400">এখনো অনুবাদ নেই। ডান পাশের ফর্ম থেকে অনুবাদ তৈরি করো।</p>}</div></div>
+            <form onSubmit={saveTranslation} className={cardClass}><h2 className="text-xl font-black">Edit translation</h2><label className="mt-4 block text-sm font-bold">Source article<select required value={translationArticleId} onChange={(e) => { setTranslationArticleId(e.target.value); const t = translations.find((item) => item.article_id === e.target.value && item.language_code === translationLanguage); setTranslationTitle(t?.title || ""); setTranslationExcerpt(t?.excerpt || ""); setTranslationContent(t?.content || ""); setTranslationStatus(t?.translation_status === "published" ? "published" : t?.translation_status === "review" ? "review" : "draft"); }} className={inputClass}><option value="">Choose article</option>{articles.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select></label>
+              <label className="mt-4 block text-sm font-bold">Target language<select value={translationLanguage} onChange={(e) => { const lang = e.target.value; setTranslationLanguage(lang); const t = translations.find((item) => item.article_id === translationArticleId && item.language_code === lang); setTranslationTitle(t?.title || ""); setTranslationExcerpt(t?.excerpt || ""); setTranslationContent(t?.content || ""); setTranslationStatus(t?.translation_status === "published" ? "published" : t?.translation_status === "review" ? "review" : "draft"); }} className={inputClass}>{SUPPORTED_LOCALES.filter((c) => c !== "en").map((c) => <option key={c} value={c}>{LOCALE_LABELS[c]} ({c})</option>)}</select></label>
+              <label className="mt-4 block text-sm font-bold">Translated headline *<input required value={translationTitle} onChange={(e) => setTranslationTitle(e.target.value)} className={inputClass}/></label><label className="mt-4 block text-sm font-bold">Summary<textarea rows={3} value={translationExcerpt} onChange={(e) => setTranslationExcerpt(e.target.value)} className={inputClass}/></label><label className="mt-4 block text-sm font-bold">Story body *<textarea required rows={9} value={translationContent} onChange={(e) => setTranslationContent(e.target.value)} className={inputClass}/></label>
+              <label className="mt-4 block text-sm font-bold">Workflow status<select value={translationStatus} onChange={(e) => setTranslationStatus(e.target.value as "draft" | "review" | "published")} className={inputClass}><option value="draft">Draft — private</option><option value="review">Needs review</option><option value="published">Publish translation</option></select></label><button disabled={busy || !translationArticleId} className={buttonClass + " mt-5"}>{busy ? "Saving…" : "Save translation"}</button>
             </form>
-          </section>
-        </>
-      )}
+          </div>}
+
+          {tab === "sections" && <div className={cardClass}><h2 className="text-xl font-black">Categories & homepage coverage</h2><p className="mt-1 text-sm leading-6 text-slate-500">টপ মেনু ছোট রাখা হয়েছে, কিন্তু সব editorial বিভাগ রাখা আছে। এই ভিউ বিভাগভিত্তিক কনটেন্ট দেখায়; বিভাগ বা homepage layout পরিবর্তনের স্থায়ী সেটিংস বর্তমানে database schema-তে নেই।</p><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{CATEGORIES.map((c) => { const items = articles.filter((a) => a.category.toLowerCase() === c.toLowerCase()); return <button key={c} onClick={() => { setCategoryFilter(c); setStatusFilter("all"); setQuery(""); setTab("articles"); }} className="flex items-center justify-between rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50"><div><p className="font-bold">{c}</p><p className="mt-1 text-xs text-slate-400">{items.filter((a) => a.status === "published").length} published · {items.filter((a) => a.status !== "published").length} drafts</p></div><span className="grid h-9 min-w-9 place-items-center rounded-full bg-slate-100 px-2 text-sm font-black">{items.length}</span></button>; })}</div><p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">Homepage section order, featured pinning এবং breaking-news banner-এর persistent controls চালু করতে আলাদা site-settings schema ও frontend integration দরকার। এখনো ওই সেটিংস সংরক্ষণের ভান করা হচ্ছে না।</p></div>}
+
+          {tab === "seo" && <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[{label:"Published articles",value:published.length,desc:"SEO audit target"},{label:"Missing summaries",value:published.filter((a) => !a.excerpt?.trim()).length,desc:"Add a useful meta description / excerpt"},{label:"Missing featured image",value:published.filter((a) => !a.image_url?.trim()).length,desc:"Add a shareable image"}].map((item) => <div key={item.label} className={cardClass}><p className="text-sm font-bold text-slate-500">{item.label}</p><p className="mt-3 text-3xl font-black">{item.value}</p><p className="mt-2 text-xs text-slate-400">{item.desc}</p></div>)}</div>
+            <div className={cardClass}><h2 className="text-xl font-black">SEO checklist</h2><p className="mt-1 text-sm text-slate-500">এগুলো basic content checks—Google indexing বা ranking-এর নিশ্চয়তা নয়।</p><div className="mt-4 divide-y divide-slate-100">{[{label:"Published article has URL slug",count:published.filter((a) => !a.slug?.trim()).length},{label:"Published article has summary",count:published.filter((a) => !a.excerpt?.trim()).length},{label:"Published article has featured image",count:published.filter((a) => !a.image_url?.trim()).length},{label:"Bengali translation published",count:published.filter((a) => !translations.some((t) => t.article_id === a.id && t.language_code === "bn" && t.translation_status === "published")).length}].map((item) => <div key={item.label} className="flex items-center justify-between gap-4 py-4"><span className="text-sm font-bold">{item.label}</span><span className={"rounded-full px-3 py-1 text-xs font-black " + (item.count ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>{item.count ? item.count + " need attention" : "Looks good"}</span></div>)}</div><div className="mt-5 flex flex-wrap gap-3"><a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className={buttonClass}>Open Google Search Console ↗</a><a href="/sitemap.xml" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold">View sitemap ↗</a><a href="/news-sitemap.xml" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold">News sitemap ↗</a></div></div>
+          </div>}
+        </section>
+      </div>
     </main>
   );
 }
