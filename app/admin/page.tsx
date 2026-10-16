@@ -239,11 +239,11 @@ export default function AdminPage() {
     if (!supabase || !userId) return;
     setBusy(true); setMessage("");
     if (article.status === "published") {
-      const { error } = await supabase.from("articles").update({ status: "draft", published_at: null }).eq("id", article.id);
+      const { error } = await supabase.from("articles").update({ status: "draft", published_at: null, scheduled_at: null }).eq("id", article.id);
       if (error) setMessage("Unpublish ব্যর্থ: " + error.message);
       else setMessage("খবরটি Draft-এ ফিরিয়ে নেওয়া হয়েছে।");
     } else {
-      const { error } = await supabase.from("articles").update({ status: "published", published_at: new Date().toISOString() }).eq("id", article.id);
+      const { error } = await supabase.from("articles").update({ status: "published", published_at: new Date().toISOString(), scheduled_at: null }).eq("id", article.id);
       if (error) setMessage("প্রকাশ ব্যর্থ: " + error.message);
       else setMessage("ইংরেজি খবর প্রকাশিত হয়েছে। বাংলা অনুবাদ আলাদাভাবে যাচাই করো।");
     }
@@ -345,11 +345,15 @@ export default function AdminPage() {
     if (!supabase || !userId || !profile || profile.role !== "admin") return;
     const snapshot = row.snapshot as Record<string, unknown>;
     if (!window.confirm("এই revision restore করলে বর্তমান article content বদলে যাবে। চালিয়ে যাবে?")) return;
+    const nullableText = (value: unknown): string | null => typeof value === "string" ? value : null;
+    const restoredStatus = ["draft", "published", "archived"].includes(String(snapshot.status))
+      ? String(snapshot.status) as "draft" | "published" | "archived" : "draft";
     setBusy(true); setMessage("");
     const { error } = await supabase.from("articles").update({
       title: String(snapshot.title ?? ""), slug: String(snapshot.slug ?? ""), category: String(snapshot.category ?? "World"),
-      status: String(snapshot.status ?? "draft"), excerpt: snapshot.excerpt ?? null, content: snapshot.content ?? null,
-      image_url: snapshot.image_url ?? null, author_name: snapshot.author_name ?? null, published_at: snapshot.published_at ?? null,
+      status: restoredStatus, excerpt: nullableText(snapshot.excerpt), content: nullableText(snapshot.content),
+      image_url: nullableText(snapshot.image_url), author_name: nullableText(snapshot.author_name),
+      published_at: nullableText(snapshot.published_at), scheduled_at: null,
     }).eq("id", row.article_id);
     if (error) setMessage("Revision restore ব্যর্থ: " + error.message);
     else { setMessage("Revision restore হয়েছে; বর্তমান সংস্করণও history-তে সংরক্ষিত হয়েছে।"); await loadEditor(userId); }
@@ -442,7 +446,7 @@ export default function AdminPage() {
               <label className="mt-4 block text-sm font-bold">সংবাদের বিবরণ *<textarea required rows={10} value={bnContent} onChange={(e) => setBnContent(e.target.value)} className={inputClass}/></label>
             </div>
             <div className={cardClass}><h2 className="font-black">Publishing & media</h2><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-bold">Featured image URL<input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" className={inputClass}/></label><label className="text-sm font-bold">Byline<input value={author} onChange={(e) => setAuthor(e.target.value)} className={inputClass}/></label></div>{imageUrl && <div className="mt-4 flex items-center gap-4 rounded-xl bg-slate-50 p-3"><img src={imageUrl} alt="Featured image preview" className="h-20 w-28 rounded-lg object-cover" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}/><p className="text-xs text-slate-500">Featured image preview</p></div>}
-              <label className="mt-4 block text-sm font-bold">Action<select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published" | "scheduled")} className={inputClass}><option value="draft">Save as draft</option><option value="scheduled">Schedule publishing</option><option value="published">Publish both languages now</option></select></label>{status === "scheduled" && <label className="mt-4 block text-sm font-bold">Publish date & time<input type="datetime-local" required min={new Date(Date.now() + 60000).toISOString().slice(0,16)} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className={inputClass}/><span className="mt-1 block text-xs font-normal text-slate-400">Uses the browser’s local timezone. Supabase database scheduler checks due stories every minute.</span></label>}
+              <label className="mt-4 block text-sm font-bold">Action<select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published" | "scheduled")} className={inputClass}><option value="draft">Save as draft</option><option value="scheduled">Schedule publishing</option><option value="published">Publish both languages now</option></select></label>{status === "scheduled" && <label className="mt-4 block text-sm font-bold">Publish date & time<input type="datetime-local" required min={new Date(Date.now() + 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16)} value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className={inputClass}/><span className="mt-1 block text-xs font-normal text-slate-400">Uses the browser’s local timezone. Supabase database scheduler checks due stories every minute.</span></label>}
               <div className="mt-5 flex flex-wrap gap-3"><button disabled={busy} className={buttonClass}>{busy ? "Saving…" : status === "published" ? "Publish bilingual article" : status === "scheduled" ? "Schedule article" : "Save draft"}</button><button type="button" disabled={busy || !editingId} onClick={() => editingId && void autoTranslateArticle(editingId)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold disabled:opacity-50">Auto-translate other languages</button></div>
             </div>
           </form>}
