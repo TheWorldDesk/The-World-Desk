@@ -120,7 +120,7 @@ export default async function ArticlePage({ params }: Props) {
       </header>
       <article className="article-body">
         <Link href="/" className="category-label">← Back to front page</Link>
-        <p className="category-label">{article.category}</p>
+        <p className="category-label">{article.displayCategory || article.category}</p>
         {article.requestedLocale && article.requestedLocale !== "en" && !article.translationLanguage && <p className="text-xs text-neutral-500">No reviewed {article.requestedLocale} translation is published yet; showing the original English text.</p>}
         <h1>{article.title}</h1>
         {article.excerpt && <p className="standfirst">{article.excerpt}</p>}
