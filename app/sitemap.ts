@@ -16,11 +16,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: latestAlternates.bn, changeFrequency: "hourly", priority: 0.8, alternates: { languages: latestAlternates } },
   ];
 
-  for (const section of sections) {
-    const languages = { en: `${baseUrl}/en/section/${section}`, bn: `${baseUrl}/bn/section/${section}`, "x-default": `${baseUrl}/en/section/${section}` };
-    urls.push({ url: languages.en, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
-    urls.push({ url: languages.bn, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
-  }
   for (const page of staticPages) {
     // These policy pages are currently authored in English only; do not claim an untranslated Bengali alternate.
     urls.push({ url: `${baseUrl}/en/${page}`, changeFrequency: "monthly", priority: 0.3 });
@@ -30,7 +25,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const { data: articles, error } = await supabase
     .from("articles")
-    .select("id,slug,published_at,updated_at")
+    .select("id,slug,category,published_at,updated_at")
     .eq("status", "published")
     .eq("language", "en")
     .order("published_at", { ascending: false })
@@ -43,6 +38,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const articleRows = articles ?? [];
   if (!articleRows.length) return urls;
+
+  // Avoid submitting empty/thin category landing pages for indexing.
+  const populatedSections = new Set(articleRows.map((article) => article.category.toLowerCase().trim().replace(/\\s+/g, "-")));
+  for (const section of sections) {
+    if (!populatedSections.has(section)) continue;
+    const languages = { en: `${baseUrl}/en/section/${section}`, bn: `${baseUrl}/bn/section/${section}`, "x-default": `${baseUrl}/en/section/${section}` };
+    urls.push({ url: languages.en, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
+    urls.push({ url: languages.bn, changeFrequency: "daily", priority: 0.6, alternates: { languages } });
+  }
 
   const { data: translations, error: translationsError } = await supabase
     .from("article_translations")
@@ -61,7 +65,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         | { id: string; slug: string; updated_at: string | null; published_at: string | null; status: string }[]
         | null;
       const article = Array.isArray(joined) ? joined[0] : joined;
-      if (!article || article.status !== "published") continue;
+      if (!article || article.status !== "published" || row.language_code === "en") continue;
       const languages = languagesByArticle.get(article.id) ?? {};
       languages.en = `${baseUrl}/en/article/${article.slug}`;
       languages["x-default"] = languages.en;
@@ -88,7 +92,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         | { id: string; slug: string; updated_at: string | null; published_at: string | null; status: string }[]
         | null;
       const article = Array.isArray(joined) ? joined[0] : joined;
-      if (!article || article.status !== "published") continue;
+      if (!article || article.status !== "published" || row.language_code === "en") continue;
       urls.push({
         url: `${baseUrl}/${row.language_code}/article/${article.slug}`,
         lastModified: article.updated_at || article.published_at || undefined,
