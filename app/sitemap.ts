@@ -40,7 +40,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (!articleRows.length) return urls;
 
   // Avoid submitting empty/thin category landing pages for indexing.
-  const populatedSections = new Set(articleRows.map((article) => article.category.toLowerCase().trim().replace(/\\s+/g, "-")));
+  const populatedSections = new Set(articleRows.map((article) => article.category.toLowerCase().trim().replace(/\s+/g, "-")));
   for (const section of sections) {
     if (!populatedSections.has(section)) continue;
     const languages = { en: `${baseUrl}/en/section/${section}`, bn: `${baseUrl}/bn/section/${section}`, "x-default": `${baseUrl}/en/section/${section}` };
