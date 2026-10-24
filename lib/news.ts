@@ -6,6 +6,7 @@ export type Article = {
   id: string;
   slug: string;
   category: string;
+  displayCategory?: string;
   title: string;
   excerpt: string;
   content: string;
@@ -99,7 +100,8 @@ export async function getPublishedArticles(localeOverride?: string): Promise<Art
     return {
       id: row.id,
       slug: row.slug,
-      category: translation?.category || row.category,
+      category: row.category,
+      displayCategory: translation?.category || row.category,
       title: translation?.title || row.title,
       excerpt: translation?.excerpt ?? row.excerpt ?? "",
       content: translation?.content || row.content || "",
