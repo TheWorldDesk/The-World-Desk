@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isLocale } from "@/lib/i18n";
 
 export const revalidate = 900;
 
@@ -49,6 +50,9 @@ export async function GET() {
     console.error("Unable to generate translated news sitemap entries:", translationsError.message);
   } else {
     for (const row of translations ?? []) {
+      // English URLs are already emitted from the articles table. Only include
+      // supported, separately translated language URLs to avoid duplicate entries.
+      if (row.language_code === "en" || !isLocale(row.language_code)) continue;
       const joined = row.articles as unknown as
         | { slug: string; published_at: string | null; status: string }
         | { slug: string; published_at: string | null; status: string }[]
@@ -59,7 +63,20 @@ export async function GET() {
     }
   }
 
-  const urls = entries.map((entry) => `  <url>
+  // Google News sitemaps should contain no more than 1,000 news URLs. Keep the
+  // freshest unique URL entries first if the newsroom has a high publishing volume.
+  const seen = new Set<string>();
+  const freshEntries = entries
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    .filter((entry) => {
+      const url = `${baseUrl}/${entry.language}/article/${entry.slug}`;
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    })
+    .slice(0, 1000);
+
+  const urls = freshEntries.map((entry) => `  <url>
     <loc>${xmlEscape(`${baseUrl}/${entry.language}/article/${entry.slug}`)}</loc>
     <news:news>
       <news:publication>
