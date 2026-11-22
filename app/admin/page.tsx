@@ -195,11 +195,35 @@ export default function AdminPage() {
       language: "en", status: "draft", published_at: null,
       scheduled_at: status === "scheduled" && scheduledDate ? new Date(scheduledDate).toISOString() : null,
     };
-    const result = editingId
-      ? await supabase.from("articles").update(payload).eq("id", editingId).select("id").single()
-      : await supabase.from("articles").insert(payload).select("id").single();
+    // Check slug conflicts and retry database uniqueness races. Never overwrite another article.
+    let candidateSlug = cleanSlug;
+    let result: { data: { id: string } | null; error: { message: string; code?: string; details?: string; hint?: string } | null } = { data: null, error: null };
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const { data: existing, error: checkError } = await supabase.from("articles")
+        .select("id").eq("slug", candidateSlug).maybeSingle();
+      if (checkError) {
+        result = { data: null, error: checkError };
+        break;
+      }
+      if (existing && existing.id !== editingId) {
+        candidateSlug = `${cleanSlug}-${attempt + 2}`;
+        continue;
+      }
+      const attemptPayload = { ...payload, slug: candidateSlug };
+      result = editingId
+        ? await supabase.from("articles").update(attemptPayload).eq("id", editingId).select("id").single()
+        : await supabase.from("articles").insert(attemptPayload).select("id").single();
+      if (!result.error) break;
+      // A simultaneous save may take the slug between our check and insert/update.
+      if (result.error.code === "23505" && /articles_slug_key|slug/i.test(result.error.message + " " + (result.error.details || ""))) {
+        candidateSlug = `${cleanSlug}-${attempt + 2}`;
+        result = { data: null, error: null };
+        continue;
+      }
+      break;
+    }
     if (result.error || !result.data?.id) {
-      setMessage("ইংরেজি খবর সংরক্ষণ হয়নি: " + (result.error?.message || "Article ID পাওয়া যায়নি।"));
+      setMessage("ইংরেজি খবর সংরক্ষণ হয়নি: " + (result.error?.message || "Unique slug তৈরি করতে পারেনি। আবার চেষ্টা করো।"));
       setBusy(false); return;
     }
     const articleId = result.data.id as string;
